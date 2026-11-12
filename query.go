@@ -1,11 +1,3 @@
-// Package diagnose 提供基于固定查询的 ClickHouse 独立诊断检查。
-//
-// 当前仅实现一个检查：ReplicationQueueFailures，识别复制队列中记录的
-// NO_REPLICA_HAS_PART 异常。检查结果只陈述"队列记录了该异常"，不推断数据
-// 是否永久丢失、故障起因或能否自愈；库不执行修复，不发现拓扑、不管理凭据、
-// 不管理连接生命周期，只关闭自己取得的 Rows。
-//
-// 依赖方向：消费端 -> 本库 -> 查询适配器 / clickhouse-go。
 package diagnose
 
 import "context"
