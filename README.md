@@ -2,6 +2,8 @@
 
 独立的 ClickHouse 诊断库，基于既有诊断平台的诊断案例抽取固定查询、证据整理与判定能力，首个计划消费端为 ckman。
 
+许可：[Apache-2.0](LICENSE)
+
 **当前状态：核心库原型 + 真机验证完成（M1/M2/M3）。** 单元测试、`go vet`、`-race` 全部通过；已在 ClickHouse 26.10.3.7（native + HTTP/database/sql）上完成查询契约、采集机制、取消、权限路径，以及**真实 `NO_REPLICA_HAS_PART` 队列条目**的匹配验证，见 `docs/compatibility.md`。仍缺：现场真实案例数据（M0）、ckman 接入（M4）。
 
 - [实现计划](docs/implementation-plan.md)：首个检查的接口、实施步骤、验收与接入方式。

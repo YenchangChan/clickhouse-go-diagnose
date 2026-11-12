@@ -148,7 +148,7 @@ ckman 适配器放在 ckman 侧，避免核心库引入 ckman。v0 不发布通�
 
 ### M0：确定样本与模块边界
 
-- [x] 确定正式 module 路径：`github.com/YenchangChan/clickhouse-go-diagnose`；源码复用许可仍待确认。
+- [x] 确定正式 module 路径：`github.com/YenchangChan/clickhouse-go-diagnose`；源码复用许可为 Apache-2.0（LICENSE）。
 - [ ] 整理一个真实现场案例：版本、拓扑、输入快照、人工确认和预期结果。
 - [ ] 将合成数据与真实脱敏数据分别标记来源；没有现场材料时先实现合成回放，但真实案例验收保持未完成。
 - [x] 固定结果状态和错误契约，写入包文档。（doc.go：结果契约矩阵、错误契约、适配器约定、默认预算、版本兼容指引）
