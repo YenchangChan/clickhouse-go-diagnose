@@ -7,6 +7,7 @@
 **当前状态：核心库原型 + 真机验证完成（M1/M2/M3）。** 单元测试、`go vet`、`-race` 全部通过；已在 ClickHouse 26.10.3.7（native + HTTP/database/sql）上完成查询契约、采集机制、取消、权限路径，以及**真实 `NO_REPLICA_HAS_PART` 队列条目**的匹配验证，见 `docs/compatibility.md`。仍缺：现场真实案例数据（M0）、ckman 接入（M4）。
 
 - [实现计划](docs/implementation-plan.md)：首个检查的接口、实施步骤、验收与接入方式。
+- [检查路线图](docs/checks-roadmap.md)：后续候选检查清单与优先级。
 - [方案背景](docs/ai-diagnostics.md)：产品边界、已有实现依据与后续方向。
 - [兼容性](docs/compatibility.md)：已验证版本、协议与实测限制。
 
