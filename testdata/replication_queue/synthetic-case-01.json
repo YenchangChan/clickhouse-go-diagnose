@@ -1,0 +1,44 @@
+{
+  "name": "synthetic-case-01",
+  "source": "synthetic；非真实现场案例。真实案例验收未完成（见 docs/implementation-plan.md M0/M3）",
+  "description": "shard-1 两个副本报告同一 part（应合并并保留两个来源），node-a 另有一条独立 part；shard-2 报告同名 part（应与 shard-1 保持独立）；node-down 查询失败（部分覆盖）。",
+  "maxRowsPerNode": 1000,
+  "expect": {
+    "execution": "partial",
+    "outcome": "matched",
+    "matches": [
+      { "shardID": "shard-1", "database": "db1", "table": "events", "partName": "20261102_0_2229_425", "sourceNodes": ["node-a"] },
+      { "shardID": "shard-1", "database": "db1", "table": "events", "partName": "20261102_10_20_3", "sourceNodes": ["node-a", "node-b"] },
+      { "shardID": "shard-2", "database": "db1", "table": "events", "partName": "20261102_10_20_3", "sourceNodes": ["node-c"] }
+    ]
+  },
+  "nodes": [
+    {
+      "nodeID": "node-a",
+      "shardID": "shard-1",
+      "rows": [
+        ["db1", "events", "20261102_10_20_3", "Code: 262. DB::Exception: No replica has part covering '20261102_10_20_3'. (NO_REPLICA_HAS_PART)"],
+        ["db1", "events", "20261102_0_2229_425", "Code: 262. DB::Exception: No replica has part covering '20261102_0_2229_425'. (NO_REPLICA_HAS_PART)"]
+      ]
+    },
+    {
+      "nodeID": "node-b",
+      "shardID": "shard-1",
+      "rows": [
+        ["db1", "events", "20261102_10_20_3", "Code: 262. DB::Exception: No replica has part covering '20261102_10_20_3'. (NO_REPLICA_HAS_PART)"]
+      ]
+    },
+    {
+      "nodeID": "node-c",
+      "shardID": "shard-2",
+      "rows": [
+        ["db1", "events", "20261102_10_20_3", "Code: 262. DB::Exception: No replica has part covering '20261102_10_20_3'. (NO_REPLICA_HAS_PART)"]
+      ]
+    },
+    {
+      "nodeID": "node-down",
+      "shardID": "shard-2",
+      "failQuery": true
+    }
+  ]
+}

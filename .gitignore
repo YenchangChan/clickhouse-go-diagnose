@@ -1,0 +1,10 @@
+# 构建与测试产物
+*.exe
+*.test
+*.out
+coverage.out
+
+# 本地/工具目录（不进入版本库）
+.workbuddy/
+.Trash-0/
+.DS_Store
