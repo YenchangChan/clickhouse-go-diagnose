@@ -11,7 +11,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	diagnose "example.org/clickhouse-go-diagnose"
+	diagnose "github.com/YenchangChan/clickhouse-go-diagnose"
 )
 
 const (

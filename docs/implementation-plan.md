@@ -128,7 +128,7 @@ LIMIT 只限制输出，不代表限制扫描工作。查询执行同时使用 c
 ```text
 clickhouse-go-diagnose/
   README.md
-  go.mod                         # 正式 module 路径确定后创建
+  go.mod                         # module github.com/YenchangChan/clickhouse-go-diagnose
   query.go                       # Querier / Rows
   report.go                      # 结构化结果与错误
   replication_queue.go           # 检查入口、预算、调度
@@ -148,7 +148,7 @@ ckman 适配器放在 ckman 侧，避免核心库引入 ckman。v0 不发布通�
 
 ### M0：确定样本与模块边界
 
-- [ ] 确定正式 module 路径和源码复用许可；组织归属未定时使用明确标记的本地开发路径，不冒用官方命名空间。
+- [x] 确定正式 module 路径：`github.com/YenchangChan/clickhouse-go-diagnose`；源码复用许可仍待确认。
 - [ ] 整理一个真实现场案例：版本、拓扑、输入快照、人工确认和预期结果。
 - [ ] 将合成数据与真实脱敏数据分别标记来源；没有现场材料时先实现合成回放，但真实案例验收保持未完成。
 - [ ] 固定结果状态和错误契约，写入包文档。
@@ -202,7 +202,7 @@ ckman 适配器放在 ckman 侧，避免核心库引入 ckman。v0 不发布通�
 - [ ] 运行已完成阶段对应的必要测试，并记录实际命令与结果。
 - [ ] 补 README 使用示例、默认预算、结果语义与适配器约定。
 - [ ] 以首个案例核对输出和人工确认结果，记录剩余局限。
-- [ ] 发布前确定 module 路径与版本；核心库不依赖 ckman、既有诊断平台或 LLM SDK。
+- [ ] 发布前确定版本号（module 路径已定为 `github.com/YenchangChan/clickhouse-go-diagnose`）；核心库不依赖 ckman、既有诊断平台或 LLM SDK。
 - [ ] 再决定是否让既有诊断平台回用该库，以及第二个异常类型的范围。
 
 ## 8. 验证命令与发布门槛

@@ -15,7 +15,7 @@
 ## 使用
 
 ```go
-import "example.org/clickhouse-go-diagnose" // module 路径为占位，定稿前不发布
+import "github.com/YenchangChan/clickhouse-go-diagnose"
 
 // Querier 由调用方实现：包装 clickhouse-go 或 database/sql 的连接。
 // 库不管理连接、凭据与拓扑，只对返回的 Rows 调用 Close。

@@ -1,10 +1,10 @@
-module example.org/clickhouse-go-diagnose/integration
+module github.com/YenchangChan/clickhouse-go-diagnose/integration
 
 go 1.24
 
 require (
-	example.org/clickhouse-go-diagnose v0.0.0
 	github.com/ClickHouse/clickhouse-go/v2 v2.15.0
+	github.com/YenchangChan/clickhouse-go-diagnose v0.0.0
 )
 
 require (
@@ -26,5 +26,4 @@ require (
 )
 
 // 相对路径 replace：离开 go.work 也能单独构建/测试本模块。
-// 核心库 module 路径为占位，正式定稿后同步替换。
-replace example.org/clickhouse-go-diagnose => ../
+replace github.com/YenchangChan/clickhouse-go-diagnose => ../

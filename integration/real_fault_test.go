@@ -8,7 +8,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 
-	diagnose "example.org/clickhouse-go-diagnose"
+	diagnose "github.com/YenchangChan/clickhouse-go-diagnose"
 )
 
 // TestCheckRealNoReplicaHasPart 验证库对**真实** NO_REPLICA_HAS_PART 队列条目的
