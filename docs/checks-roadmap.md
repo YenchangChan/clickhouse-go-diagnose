@@ -11,7 +11,7 @@
 |---|---|---|---|---|
 | 1 | `TooManyParts` | **✅ 已完成（2026-11-13）**：框架泛化 + 真机验证见 docs/compatibility.md | 循环小批量 INSERT 制造几百个 part，无需 Keeper | 低（纯阈值+聚合，最稳的表） |
 | 2 | `ReplicaStatus` | **✅ 已完成（2026-11-13）**：真机验证见 docs/compatibility.md（readonly 来自真实病变表，active 缺口由 ghost znode 注入，脚本 `scripts/inject_ghost_replica.py`） | 停 Keeper 或断开会话触发 readonly/session_expired；延迟项造 active_replicas 差异 | 中（需要 Keeper 操控，注入脚本框架已有） |
-| 3 | `MutationsStuck` | 待实现 | 构造必然失败的 ALTER（如 MODIFY 不兼容类型），mutation 卡住并留下异常文本 | 低 |
+| 3 | `MutationsStuck` | **✅ 已完成（2026-11-13）**：真机验证见 docs/compatibility.md（intDiv 除零构造失败 mutation，测试内联完成无需外部脚本） | 构造必然失败的 ALTER（如 MODIFY 不兼容类型），mutation 卡住并留下异常文本 | 低 |
 
 ## P2（有价值，第二批）
 
@@ -46,4 +46,4 @@
 
 ~~`TooManyParts`~~（✅ 2026-11-13 完成，框架已泛化为 runner.go）→
 ~~`ReplicaStatus`~~（✅ 2026-11-13 完成，复用 Keeper 注入思路）→
-`MutationsStuck` → `ReplicationQueueBacklog` → 其余。
+~~`MutationsStuck`~~（✅ 2026-11-13 完成）→ `ReplicationQueueBacklog` → 其余。

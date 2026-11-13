@@ -2,7 +2,7 @@
 //
 // # 当前范围
 //
-// 当前实现三个检查，共用同一套采集调度（固定 worker 数、总/单节点预算、
+// 当前实现四个检查，共用同一套采集调度（固定 worker 数、总/单节点预算、
 // N+1 截断检测）与结果契约：
 //
 //   - [CheckReplicationQueueFailures]：识别复制队列（system.replication_queue）
@@ -11,7 +11,9 @@
 //     （system.parts 按 (分片, 库, 表, 分区) 聚合），属阈值判定而非异常匹配；
 //   - [CheckReplicaStatus]：识别复制表的副本异常（只读、会话过期、
 //     active 副本缺口、延迟超阈值、丢件记录），数据源 system.replicas，
-//     每条观测附带稳定理由码（Reason* 常量）。
+//     每条观测附带稳定理由码（Reason* 常量）；
+//   - [CheckMutationsStuck]：识别卡住的 mutation（失败重试、未完成超龄），
+//     数据源 system.mutations，已完成条目由固定查询在服务端过滤。
 //
 // 结果只陈述"观测到了什么"，不推断数据是否永久丢失、故障起因或能否自愈。
 // 匹配/超阈值不等于确认需要修复；无匹配不等于集群健康。库不执行修复，

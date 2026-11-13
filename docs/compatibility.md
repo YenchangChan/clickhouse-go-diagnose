@@ -60,6 +60,19 @@
 - HTTP/database/sql 路径同样验证通过。
 - Keeper 客户端端口（9181）的 HTTP 命令接口与四字命令在本环境均不可用（空响应/断连），Keeper 操作统一走 kazoo。
 
+### 2026-11-13 · ClickHouse 26.10.3.7 · 同集群 · `MutationsStuck` 检查
+
+- 固定查询直接在真实 `system.mutations` 上执行：列集（`database/table/mutation_id/command/create_time/is_done/latest_fail_reason`，另含 26.x 新增的 `latest_fail_error_code_name`、`is_killed`、`parts_to_do` 等未使用）确认存在。
+- **固定查询陷阱（真机实测）**：`toString(is_done) AS is_done` 会让 `WHERE NOT is_done` 里的列名被 SELECT 别名遮蔽成 String，报 `Illegal type (String) of argument of function not`（code 43）。别名必须改用其他名字（本实现用 `done`）。
+- **真实失败 mutation 构造**（`integration/mutations_test.go` 内联完成，无需外部脚本）：
+  - `ALTER ... UPDATE b = toString(intDiv(a, 0)) WHERE 1` → mutation 卡住：`is_done=0`、`latest_fail_reason` 带完整堆栈（`ILLEGAL_DIVISION`），1 秒内出现，持续重试；
+  - **`a / 0` 不是除零异常**：`/` 是 IEEE 浮点除，Int64/0 = inf，`toString(inf)` 得 `'nan'`，mutation "成功"执行——必须用 `intDiv`；
+  - **ORDER BY 键列不允许 UPDATE**：提交期直接报 `CANNOT_UPDATE_COLUMN`（code 420），mutation 不产生——构造失败 mutation 必须作用于非键列。
+- 匹配结果：`complete + matched`，理由码 `mutation_failing`，原始命令与失败全文保留。
+- 清理路径：`KILL MUTATION ... SYNC` 后未完成条目归零（killed 条目移出未完成集合），检查回到 `complete/no_match`；`DROP DATABASE` 兜底。
+- 年轻且无失败文本的条目"只读不报"语义由服务端 `WHERE NOT is_done` + 客户端阈值保证；"未完成超龄"规则默认阈值 86400 秒，真机无长任务窗口可稳定捕捉，由单测覆盖。
+- HTTP/database/sql 路径同样验证通过。
+
 
 **v2.15.0 驱动实测限制（对 ckman 接入重要）：**
 
@@ -83,3 +96,4 @@
 - [ ] `TooManyParts` 固定查询在更旧服务器版本的列集与 `SYSTEM STOP MERGES` 按表语法（26.10 已验证）
 - [ ] `ReplicaStatus` 的 readonly/session_expired 在**可操控 Keeper** 环境下的主动复现（停 Keeper/断会话；本次 readonly 证据来自真实病变残留表，active 缺口由 ghost znode 构造）
 - [ ] `ReplicaStatus` 固定查询在更旧服务器版本的 `system.replicas` 列集（26.10 已验证）
+- [ ] `MutationsStuck` 固定查询在更旧服务器版本的 `system.mutations` 列集与 `dateDiff('second', ...)` 可用性（26.10 已验证；所选列均为古老列，预期旧版本可用，未实测）

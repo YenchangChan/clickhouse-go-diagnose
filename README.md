@@ -4,7 +4,7 @@
 
 许可：[Apache-2.0](LICENSE)
 
-**当前状态：核心库原型 + 真机验证完成（M1/M2/M3）。** 单元测试、`go vet`、`-race` 全部通过；已在 ClickHouse 26.10.3.7（native + HTTP/database/sql）上完成查询契约、采集机制、取消、权限路径，以及**真实 `NO_REPLICA_HAS_PART` 队列条目**、**真实碎片化分区**与**真实副本异常**的匹配验证，见 `docs/compatibility.md`。已实现三个检查：`CheckReplicationQueueFailures`（NO_REPLICA_HAS_PART）、`CheckTooManyParts`（单分区 part 数超阈值）与 `CheckReplicaStatus`（副本只读/会话过期/active 缺口/延迟超阈值/丢件记录）。仍缺：现场真实案例数据（M0）、ckman 接入（M4）。
+**当前状态：核心库原型 + 真机验证完成（M1/M2/M3）。** 单元测试、`go vet`、`-race` 全部通过；已在 ClickHouse 26.10.3.7（native + HTTP/database/sql）上完成查询契约、采集机制、取消、权限路径，以及**真实 `NO_REPLICA_HAS_PART` 队列条目**、**真实碎片化分区**、**真实副本异常**与**真实卡住 mutation**的匹配验证，见 `docs/compatibility.md`。已实现四个检查：`CheckReplicationQueueFailures`（NO_REPLICA_HAS_PART）、`CheckTooManyParts`（单分区 part 数超阈值）、`CheckReplicaStatus`（副本只读/会话过期/active 缺口/延迟超阈值/丢件记录）与 `CheckMutationsStuck`（mutation 失败重试/未完成超龄）。仍缺：现场真实案例数据（M0）、ckman 接入（M4）。
 
 - [实现计划](docs/implementation-plan.md)：首个检查的接口、实施步骤、验收与接入方式。
 - [检查路线图](docs/checks-roadmap.md)：后续候选检查清单与优先级。
@@ -13,7 +13,7 @@
 
 ## v0 范围
 
-三个独立检查，各自返回结构化报告：复制队列的 `NO_REPLICA_HAS_PART` 异常（`CheckReplicationQueueFailures`）、单分区活跃 part 数超阈值（`CheckTooManyParts`）、副本状态异常（`CheckReplicaStatus`：只读、会话过期、active 副本缺口、延迟超阈值、丢件记录）。所有检查保留节点来源和检查完整性。匹配/超阈值**不等于**确认故障起因或需要修复；无匹配**不等于**集群健康。不自动修复，不依赖 LLM。
+四个独立检查，各自返回结构化报告：复制队列的 `NO_REPLICA_HAS_PART` 异常（`CheckReplicationQueueFailures`）、单分区活跃 part 数超阈值（`CheckTooManyParts`）、副本状态异常（`CheckReplicaStatus`：只读、会话过期、active 副本缺口、延迟超阈值、丢件记录）与卡住的 mutation（`CheckMutationsStuck`：失败重试、未完成超龄）。所有检查保留节点来源和检查完整性。匹配/超阈值**不等于**确认故障起因或需要修复；无匹配**不等于**集群健康。不自动修复，不依赖 LLM。
 
 ## 使用
 
@@ -46,7 +46,7 @@ report, err := diagnose.CheckReplicationQueueFailures(ctx, []diagnose.Target{
 | `Execution` | `complete` / `partial` / `failed`，采集完整性，与异常判断分离 |
 | `Outcome` | `matched` / `no_match` / `unknown`，仅表示本检查的匹配结果 |
 | `Targets` | 每个节点状态、读取/保留行数、截断标记、错误类别（`query_failed`、`timeout`、`canceled` 等） |
-| `Matches` | 按检查归并：队列检查按 `(ShardID, Database, Table, PartName)`，分区检查按 `(ShardID, Database, Table, Partition)`，副本检查按 `(ShardID, Database, Table)`；同分片多副本合并展示但保留各来源节点；不同分片绝不合并 |
+| `Matches` | 按检查归并：队列检查按 `(ShardID, Database, Table, PartName)`，分区检查按 `(ShardID, Database, Table, Partition)`，副本检查按 `(ShardID, Database, Table)`，mutation 检查按 `(ShardID, Database, Table, MutationID)`；同分片多副本合并展示但保留各来源节点；不同分片绝不合并 |
 | `NextSteps` | 稳定建议代码（如 `verify_replicas_for_part`），文案由消费端决定 |
 
 默认预算：总 10s、单节点 2s、并发 4、单节点保留 1000 条匹配（读 N+1 条检测截断）。零值选项使用默认值，负值报错。

@@ -78,6 +78,10 @@ const (
 	AdviceInspectReplicaDelay = "inspect_replica_delay"
 	// AdviceInvestigateLostParts 核对丢件副本的队列与数据完整性，评估恢复。
 	AdviceInvestigateLostParts = "investigate_lost_parts"
+	// AdviceInspectMutationFailure 核对卡住 mutation 的失败原因与修复手段。
+	AdviceInspectMutationFailure = "inspect_mutation_failure"
+	// AdviceCheckMutationProgress 核对长时间未完成 mutation 是否真的在推进。
+	AdviceCheckMutationProgress = "check_mutation_progress"
 )
 
 // 副本状态判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
@@ -92,6 +96,15 @@ const (
 	ReasonReplicaDelayExceeded = "replica_delay_exceeded"
 	// ReasonLostParts 副本记录了永久性丢件（lost_part_count > 0）。
 	ReasonLostParts = "lost_parts"
+)
+
+// mutation 判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
+const (
+	// ReasonMutationFailing mutation 在服务端失败且仍在队列重试
+	//（latest_fail_reason 非空且未完成）。
+	ReasonMutationFailing = "mutation_failing"
+	// ReasonMutationLongRunning mutation 未完成且年龄超过阈值。
+	ReasonMutationLongRunning = "mutation_long_running"
 )
 
 var (
@@ -252,6 +265,54 @@ type ReplicaStatusReport struct {
 
 	Targets   []NodeResult
 	Matches   []ReplicaMatch
+	NextSteps []FollowUp
+}
+
+// MutationObservation 是一条 mutation 证据：哪个节点的 system.mutations
+// 记录了该未完成条目，以及该观测命中的稳定理由码（ReasonMutation* 常量）。
+type MutationObservation struct {
+	NodeID string
+
+	Command    string // 原始 mutation 命令，可能包含敏感字面量，UI 必须按文本转义展示
+	AgeSeconds int    // 服务端 dateDiff 计算的未完成时长（秒）
+
+	// LatestFailReason 是原始失败文本（空表示从未失败），可能包含敏感
+	// 信息与完整堆栈。
+	LatestFailReason string
+
+	Reasons []string
+}
+
+// MutationMatch 是按 (ShardID, Database, Table, MutationID) 归并后的
+// 卡住 mutation。复制表的同一 mutation 在多个副本节点报告时合并展示，
+// 但保留每个来源节点——各副本的重试状态可能不同。匹配条数不是失败
+// 次数，也不构成修复指令。
+type MutationMatch struct {
+	ShardID      string
+	Database     string
+	Table        string
+	MutationID   string
+	Observations []MutationObservation
+}
+
+// MutationsStuckReport 是 MutationsStuck 检查的结构化结果。
+//
+// 语义约定与 TooManyPartsReport 一致：Execution 与 Outcome 分离；
+// 匹配说明 mutation 状态值得人工核查，不等于集群不可用；no_match 不等于
+// 集群健康（已完成范围只覆盖未完成条目）；时间戳是各节点各自的采集时刻；
+// 即使顶层返回 error，报告中已保留的有效证据仍然成立。
+type MutationsStuckReport struct {
+	CheckID     string
+	RuleVersion string
+
+	StartedAt  time.Time
+	FinishedAt time.Time
+
+	Execution Execution
+	Outcome   Outcome
+
+	Targets   []NodeResult
+	Matches   []MutationMatch
 	NextSteps []FollowUp
 }
 
