@@ -107,6 +107,16 @@ const (
 	ReasonMutationLongRunning = "mutation_long_running"
 )
 
+// 队列积压判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
+const (
+	// ReasonQueueDepth 复制队列在队条目数达到积压阈值。
+	ReasonQueueDepth = "queue_depth_backlog"
+	// ReasonQueueOldestEntry 队列最老条目年龄超过阈值。
+	ReasonQueueOldestEntry = "queue_oldest_entry_aged"
+	// ReasonQueueMaxRetries 队列条目最大重试次数达到阈值。
+	ReasonQueueMaxRetries = "queue_max_retries_exceeded"
+)
+
 var (
 	// ErrNoUsableObservation 表示所有目标都失败或没有产出任何可用观测。
 	// 报告仍会返回（Execution=failed），消费端必须先处理报告再展示该错误，
@@ -313,6 +323,55 @@ type MutationsStuckReport struct {
 
 	Targets   []NodeResult
 	Matches   []MutationMatch
+	NextSteps []FollowUp
+}
+
+// QueueBacklogObservation 是一条队列积压证据：哪个节点的复制队列记录了
+// 该表的积压聚合特征，以及该观测命中的稳定理由码（ReasonQueue* 常量）。
+type QueueBacklogObservation struct {
+	NodeID string
+
+	Depth            int // 该节点上该表的在队条目数
+	OldestAgeSeconds int // 服务端 dateDiff 计算的最老条目年龄（秒）
+	MaxRetries       int // 在队条目中的最大重试次数
+	FailingEntries   int // 在队条目中带异常文本的数量（背景证据，非判定规则）
+
+	Reasons []string
+}
+
+// QueueBacklogMatch 是按 (ShardID, Database, Table) 归并后的队列积压对象。
+// 同一复制表的多个副本节点各自维护独立队列，观测保留每个来源节点；
+// Depth/OldestAgeSeconds/MaxRetries 取各节点观测中的最大值——任一副本
+// 积压本身就构成证据。匹配条数不是队列任务总数，也不构成修复指令。
+type QueueBacklogMatch struct {
+	ShardID          string
+	Database         string
+	Table            string
+	Depth            int // 观测中的最大在队条目数
+	OldestAgeSeconds int // 观测中的最大最老条目年龄
+	MaxRetries       int // 观测中的最大重试次数
+
+	Observations []QueueBacklogObservation
+}
+
+// QueueBacklogReport 是 ReplicationQueueBacklog 检查的结构化结果。
+//
+// 语义约定与 TooManyPartsReport 一致：Execution 与 Outcome 分离；
+// 积压说明队列消化速率值得人工核查，不等于数据不可用；no_match 不等于
+// 集群健康（在途正常条目造成的瞬时深度不触发判定）；时间戳是各节点
+// 各自的采集时刻；即使顶层返回 error，报告中已保留的有效证据仍然成立。
+type QueueBacklogReport struct {
+	CheckID     string
+	RuleVersion string
+
+	StartedAt  time.Time
+	FinishedAt time.Time
+
+	Execution Execution
+	Outcome   Outcome
+
+	Targets   []NodeResult
+	Matches   []QueueBacklogMatch
 	NextSteps []FollowUp
 }
 

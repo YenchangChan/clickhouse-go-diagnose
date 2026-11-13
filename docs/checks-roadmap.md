@@ -17,7 +17,7 @@
 
 | # | 检查 | 检测什么 | 数据来源 | 真机验证方式 | 难度 |
 |---|---|---|---|---|---|
-| 4 | `ReplicationQueueBacklog` | 队列积压深度、最老条目年龄、重试次数分布——不限于 NO_REPLICA_HAS_PART 一种异常 | `system.replication_queue`（复用首个检查的查询基础设施） | 已有注入手段；普通 get/merge 积压也可由停 Keeper 制造 | 低（复用度高） |
+| 4 | `ReplicationQueueBacklog` | **✅ 已完成（2026-11-13）**：服务端按 (库,表) 聚合 + 客户端三条阈值规则（深度/最老条目年龄/重试次数），真机验证见 docs/compatibility.md（故障分支复用 NO_REPLICA_HAS_PART 注入条目） | 已有注入手段；普通 get/merge 积压也可由停 Keeper 制造 | 低（复用度高） |
 | 5 | `DiskSpaceLow` | 各磁盘/卷剩余空间与水位线 | `system.disks` | 本机磁盘可控，造小阈值即可触发 | 低 |
 | 6 | `DetachedParts` | detached 目录中异常数量的 part（误操作、清理残留） | `system.detached_parts` | `DETACH PART` 即可制造 | 低 |
 
@@ -46,4 +46,5 @@
 
 ~~`TooManyParts`~~（✅ 2026-11-13 完成，框架已泛化为 runner.go）→
 ~~`ReplicaStatus`~~（✅ 2026-11-13 完成，复用 Keeper 注入思路）→
-~~`MutationsStuck`~~（✅ 2026-11-13 完成）→ `ReplicationQueueBacklog` → 其余。
+~~`MutationsStuck`~~（✅ 2026-11-13 完成）→
+~~`ReplicationQueueBacklog`~~（✅ 2026-11-13 完成，P2 首项收官）→ `DiskSpaceLow` → 其余。

@@ -73,6 +73,14 @@
 - 年轻且无失败文本的条目"只读不报"语义由服务端 `WHERE NOT is_done` + 客户端阈值保证；"未完成超龄"规则默认阈值 86400 秒，真机无长任务窗口可稳定捕捉，由单测覆盖。
 - HTTP/database/sql 路径同样验证通过。
 
+### 2026-11-13 · ClickHouse 26.10.3.7 · 同集群 · `ReplicationQueueBacklog` 检查
+
+- 固定查询直接在真实 `system.replication_queue` 上执行（按 库/表 服务端聚合）：列集确认只依赖最古老列 `database/table/create_time/num_tries/last_exception`。**26.10 上没有 `postponed_due_to_error`、`is_fetching` 等列**——印证了"只用古老列"策略的必要性，这些诊断列一律不进固定查询。
+- `dateDiff('second', min(create_time), now())` 服务端计算最老条目年龄可用；空队列返回空结果集（无行，非报错）。
+- 健康路径：单副本复制表插入后队列秒级清空，`complete/no_match`；HTTP/database/sql 路径同样通过。
+- 故障路径：复用 `scripts/inject_no_replica_has_part.py` 注入的失败 merge 条目（该条目持续重试、常驻队列），收紧阈值（depth≥1、age≥1s、重试规则关闭）后故障表被报出且深度理由命中；报出的匹配集合与服务端 `GROUP BY` 聚合事实逐项一致。默认阈值下的健康判定（depth<100、age<1h）对单条在途故障条目正确保持静默。
+- 集成测试的 Keeper 夹具路径按运行时刻唯一：`DROP TABLE` 对副本 znode 的清理是异步收尾（ReplicaStatus 阶段已实测），固定路径重跑会撞 `REPLICA_ALREADY_EXISTS` 或吃到上一轮残留的 log 条目；路径唯一从根上规避，留下的空 znode 目录无害。
+
 
 **v2.15.0 驱动实测限制（对 ckman 接入重要）：**
 
@@ -97,3 +105,4 @@
 - [ ] `ReplicaStatus` 的 readonly/session_expired 在**可操控 Keeper** 环境下的主动复现（停 Keeper/断会话；本次 readonly 证据来自真实病变残留表，active 缺口由 ghost znode 构造）
 - [ ] `ReplicaStatus` 固定查询在更旧服务器版本的 `system.replicas` 列集（26.10 已验证）
 - [ ] `MutationsStuck` 固定查询在更旧服务器版本的 `system.mutations` 列集与 `dateDiff('second', ...)` 可用性（26.10 已验证；所选列均为古老列，预期旧版本可用，未实测）
+- [ ] `ReplicationQueueBacklog` 固定查询在更旧服务器版本的 `system.replication_queue` 列集与 `countIf`/`dateDiff('second', min(create_time), now())` 可用性（26.10 已验证；所选列均为古老列，预期旧版本可用，未实测）

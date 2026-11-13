@@ -13,7 +13,10 @@
 //     active 副本缺口、延迟超阈值、丢件记录），数据源 system.replicas，
 //     每条观测附带稳定理由码（Reason* 常量）；
 //   - [CheckMutationsStuck]：识别卡住的 mutation（失败重试、未完成超龄），
-//     数据源 system.mutations，已完成条目由固定查询在服务端过滤。
+//     数据源 system.mutations，已完成条目由固定查询在服务端过滤；
+//   - [CheckReplicationQueueBacklog]：识别复制队列积压（在队条目数、
+//     最老条目年龄、重试次数超阈值），数据源 system.replication_queue
+//     按 (库, 表) 的服务端聚合，覆盖全部条目类型。
 //
 // 结果只陈述"观测到了什么"，不推断数据是否永久丢失、故障起因或能否自愈。
 // 匹配/超阈值不等于确认需要修复；无匹配不等于集群健康。库不执行修复，
