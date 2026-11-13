@@ -24,8 +24,11 @@ func renderJSON(w io.Writer, meta runMeta, results []checkView) error {
 //   - 先渲染报告证据，顶层 error 最后呈现。
 
 func renderText(w io.Writer, meta runMeta, results []checkView) error {
-	fmt.Fprintf(w, "clickhouse-doctor %s  node=%s shard=%s protocol=%s\n",
-		meta.Version, meta.NodeID, meta.ShardID, meta.Protocol)
+	fmt.Fprintf(w, "clickhouse-doctor %s  protocol=%s  targets=%d\n",
+		meta.Version, meta.Protocol, len(meta.Targets))
+	for _, t := range meta.Targets {
+		fmt.Fprintf(w, "  目标 %s (%s) [%s]\n", t.NodeID, t.ShardID, t.Protocol)
+	}
 	fmt.Fprintf(w, "时间: %s ~ %s\n\n", meta.StartedAt.Format(time.RFC3339), meta.FinishedAt.Format(time.RFC3339))
 
 	for _, r := range results {

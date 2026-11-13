@@ -72,7 +72,9 @@ func TestRenderJSON(t *testing.T) {
 		}},
 		NextSteps: []followUpView{{Code: "locate_inactive_replica", Detail: "定位未激活副本"}},
 	}}
-	meta := runMeta{Version: version, NodeID: "node-a", ShardID: "s1", Protocol: "native",
+	meta := runMeta{Version: version, Protocol: "native", Targets: []targetSummary{
+		{NodeID: "node-a", ShardID: "s1", Addr: "host-a:9000", Protocol: "native"},
+	},
 		StartedAt: time.Unix(1700000000, 0), FinishedAt: time.Unix(1700000001, 0)}
 
 	var buf bytes.Buffer
@@ -114,7 +116,9 @@ func TestRenderJSON(t *testing.T) {
 }
 
 func TestRenderTextMatchedAndPartial(t *testing.T) {
-	meta := runMeta{Version: version, NodeID: "node-a", ShardID: "s1", Protocol: "native",
+	meta := runMeta{Version: version, Protocol: "native", Targets: []targetSummary{
+		{NodeID: "node-a", ShardID: "s1", Addr: "host-a:9000", Protocol: "native"},
+	},
 		StartedAt: time.Unix(1700000000, 0), FinishedAt: time.Unix(1700000001, 0)}
 
 	results := []checkView{
@@ -168,7 +172,9 @@ func TestRenderTextMatchedAndPartial(t *testing.T) {
 }
 
 func TestRenderTextNoMatchNote(t *testing.T) {
-	meta := runMeta{Version: version, Protocol: "native"}
+	meta := runMeta{Version: version, Protocol: "native", Targets: []targetSummary{
+		{NodeID: "node-a", ShardID: "shard-1", Addr: "host-a:9000", Protocol: "native"},
+	}}
 	var buf bytes.Buffer
 	err := renderText(&buf, meta, []checkView{{
 		Check: "disk_space_low", Execution: "complete", Outcome: "no_match",
@@ -192,5 +198,83 @@ func TestClip(t *testing.T) {
 	}
 	if clip("短") != "短" {
 		t.Errorf("短文本不应截断")
+	}
+}
+
+func TestBuildNodeSpecs(t *testing.T) {
+	// 多节点：shard 前缀 + 无前缀（用默认分片）+ HTTP 地址
+	specs, err := buildNodeSpecs(options{
+		nodes:   nodeFlags{"shard-1@host-a:9000", "host-b:9000", "shard-2@http://host-c:8123"},
+		shardID: "shard-1",
+	})
+	if err != nil {
+		t.Fatalf("多节点解析: %v", err)
+	}
+	if len(specs) != 3 {
+		t.Fatalf("应有 3 个节点，got %d", len(specs))
+	}
+	if specs[0].shardID != "shard-1" || specs[0].nodeID != "host-a:9000" {
+		t.Errorf("specs[0] 错误: %+v", specs[0])
+	}
+	if specs[1].shardID != "shard-1" || specs[1].nodeID != "host-b:9000" {
+		t.Errorf("specs[1] 应使用默认分片: %+v", specs[1])
+	}
+	if !isHTTPAddr(specs[2].addr) {
+		t.Errorf("specs[2] 应识别为 HTTP: %+v", specs[2])
+	}
+
+	// 单节点兼容形式：--addr + --node-id
+	specs, err = buildNodeSpecs(options{addr: "host-a:9000", nodeID: "node-a", shardID: "shard-9"})
+	if err != nil {
+		t.Fatalf("单节点兼容: %v", err)
+	}
+	if len(specs) != 1 || specs[0].nodeID != "node-a" || specs[0].shardID != "shard-9" {
+		t.Fatalf("单节点兼容错误: %+v", specs)
+	}
+
+	// 单节点兼容形式：--http 自动加 http:// 前缀
+	specs, err = buildNodeSpecs(options{httpAddr: "host-c:8123", shardID: "shard-1"})
+	if err != nil {
+		t.Fatalf("--http 兼容: %v", err)
+	}
+	if !isHTTPAddr(specs[0].addr) {
+		t.Errorf("--http 应产生 http:// 前缀地址: %+v", specs[0])
+	}
+
+	// 空：必须报错
+	if _, err := buildNodeSpecs(options{}); err == nil {
+		t.Error("无任何节点参数应报错")
+	}
+
+	// 重复 NodeID：必须报错
+	if _, err := buildNodeSpecs(options{
+		nodes: nodeFlags{"shard-1@host-a:9000", "shard-2@host-a:9000"},
+	}); err == nil {
+		t.Error("重复 node-id 应报错")
+	}
+
+	// 残缺 shard 前缀：必须报错
+	if _, err := buildNodeSpecs(options{nodes: nodeFlags{"@host-a:9000"}}); err == nil {
+		t.Error("空 shard 前缀应报错")
+	}
+}
+
+func TestBuildNodeSpecsThreeParts(t *testing.T) {
+	specs, err := buildNodeSpecs(options{
+		nodes:   nodeFlags{"shard-1@r1@192.168.56.101:9000", "shard-2@r2@192.168.56.101:9000"},
+		shardID: "shard-1",
+	})
+	if err != nil {
+		t.Fatalf("三段式解析: %v", err)
+	}
+	if specs[0].nodeID != "r1" || specs[1].nodeID != "r2" {
+		t.Errorf("三段式 node-id 错误: %+v", specs)
+	}
+	if specs[0].addr != "192.168.56.101:9000" {
+		t.Errorf("三段式 addr 错误: %+v", specs[0])
+	}
+	// 四段（地址含 @ 之类）应报错
+	if _, err := buildNodeSpecs(options{nodes: nodeFlags{"a@b@c@d"}}); err == nil {
+		t.Error("超过三段应报错")
 	}
 }

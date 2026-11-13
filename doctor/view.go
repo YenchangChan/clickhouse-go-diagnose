@@ -13,12 +13,20 @@ import (
 // error 文本可能含服务端敏感信息，展示方需按文本处理。
 
 type runMeta struct {
-	Version    string    `json:"version"`
-	NodeID     string    `json:"node_id"`
-	ShardID    string    `json:"shard_id"`
-	Protocol   string    `json:"protocol"`
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
+	Version    string          `json:"version"`
+	Protocol   string          `json:"protocol"`
+	Targets    []targetSummary `json:"targets"`
+	StartedAt  time.Time       `json:"started_at"`
+	FinishedAt time.Time       `json:"finished_at"`
+}
+
+// targetSummary 记录本次运行的目标身份清单；NodeID 与 ShardID 与
+// 各检查报告 targets 字段中的取值一致，便于关联。
+type targetSummary struct {
+	NodeID   string `json:"node_id"`
+	ShardID  string `json:"shard_id"`
+	Addr     string `json:"addr"`
+	Protocol string `json:"protocol"`
 }
 
 type targetView struct {

@@ -12,7 +12,16 @@
 # native 协议，全部 7 个检查
 clickhouse-doctor --addr 127.0.0.1:9000 --password '...'
 
-# HTTP/database/sql 路径
+# 多节点（可重复 --node；跨分片不归并，同主机多实例须显式区分 node-id）
+clickhouse-doctor --node shard-1@node-a:9000 --node shard-2@node-b:9000 --password '...'
+
+# 同主机双副本：三段式 shard@node-id@addr
+clickhouse-doctor --node shard-1@r1@127.0.0.1:9000 --node shard-2@r2@127.0.0.1:9000 --password '...'
+
+# 混合协议：地址写 http:// 前缀的节点走 HTTP/database/sql 路径
+clickhouse-doctor --node shard-1@node-a:9000 --node shard-2@http://node-b:8123 --password '...'
+
+# HTTP/database/sql 路径（单节点兼容形式）
 clickhouse-doctor --http 127.0.0.1:8123 --password '...'
 
 # 指定检查、机器可读输出
@@ -24,6 +33,9 @@ clickhouse-doctor --version
 ```
 
 密码优先级：`--password` > 环境变量 `CLICKHOUSE_DOCTOR_PASSWORD`。
+
+连接策略是全有或全无：任一节点建连失败则整体退出（exit 1，错误指明节点），
+不会静默只跑部分节点后渲染成完整结果。
 
 ## 输出语义（遵循核心库契约）
 
@@ -45,7 +57,8 @@ clickhouse-doctor --version
 
 ## 当前边界
 
-- 一次调用一个目标节点（v0）。多节点拓扑的 Target 编排属消费端扩展，核心库已支持。
+- 多节点：`--node` 每次一个目标，跨分片不归并（核心库契约）；NodeID 默认取地址，
+  同主机多实例用三段式显式区分。
 - 检查阈值使用核心库默认值；阈值暴露成 flag 待真实使用反馈后决定。
 - 原始路线图中的 CPU / 慢查询 / 内存检查属核心库新检查（依赖
   `query_log`/`metric_log`），不在本 CLI 的范围内。
