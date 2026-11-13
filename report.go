@@ -86,6 +86,10 @@ const (
 	AdviceInspectDiskUsage = "inspect_disk_usage"
 	// AdviceReviewTTLRetention 核对 TTL 与保留策略是否生效。
 	AdviceReviewTTLRetention = "review_ttl_retention"
+	// AdviceInvestigateBrokenPart 核对服务端判定损坏的 part 的来源与恢复手段。
+	AdviceInvestigateBrokenPart = "investigate_broken_part"
+	// AdviceInspectDetachedParts 核对 detached 目录内容并规划 ATTACH/清理。
+	AdviceInspectDetachedParts = "inspect_detached_parts"
 )
 
 // 副本状态判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
@@ -128,6 +132,20 @@ const (
 	// ReasonDiskReserveBreached 剩余空间已低于 keep_free_space 保留量，
 	// 服务端将拒绝继续写入新数据。
 	ReasonDiskReserveBreached = "disk_reserve_breached"
+)
+
+// detached part 判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
+const (
+	// ReasonDetachedBroken 服务端判定 part 损坏而自行下线
+	//（reason 前缀 broken，含 broken-on-start）。
+	ReasonDetachedBroken = "detached_broken"
+	// ReasonDetachedServerInitiated 服务端因其他记录在案的原因自行下线
+	// part（merge 失败残留、clone 等；reason 非空且非 broken 前缀）。
+	// 用户通过 ALTER 手工 detach 的 part reason 为空，不触发此规则。
+	ReasonDetachedServerInitiated = "detached_server_initiated"
+	// ReasonDetachedCountExceeded 单节点上同一张表的 detached part 总数
+	// 达到阈值。附加在匹配级 Reasons 上，不在逐 part 观测里。
+	ReasonDetachedCountExceeded = "detached_count_exceeded"
 )
 
 var (
@@ -431,6 +449,58 @@ type DiskSpaceReport struct {
 
 	Targets   []NodeResult
 	Matches   []DiskSpaceMatch
+	NextSteps []FollowUp
+}
+
+// DetachedObservation 是一条 detached part 证据：哪个节点的哪张表下存在
+// 该 detached part，以及该观测命中的稳定理由码（ReasonDetached* 常量）。
+// 空 Reasons 表示用户通过 ALTER 手工 detach（reason 为空），本身不构成异常。
+type DetachedObservation struct {
+	NodeID      string
+	PartName    string
+	Reason      string // 服务端 reason 原始值；空表示用户手工 detach
+	Disk        string
+	BytesOnDisk uint64
+
+	Reasons []string
+}
+
+// DetachedMatch 是按 (ShardID, Database, Table) 归并后的 detached part 集合。
+// 同一复制表的多个副本节点各自维护独立的 detached 目录，观测保留每个来源
+// 节点；Parts 取各节点观测中的最大值（单节点视角总数），跨节点不累加。
+// Reasons 是匹配级理由（如 ReasonDetachedCountExceeded），与逐 part 的
+// Reasons 区分。匹配条数不等于故障数，也不构成修复指令。
+type DetachedMatch struct {
+	ShardID  string
+	Database string
+	Table    string
+
+	Parts int // 观测中的最大单节点 detached 总数
+
+	// Reasons 是匹配级判定理由（ReasonDetachedCountExceeded）。
+	Reasons []string
+
+	Observations []DetachedObservation
+}
+
+// DetachedPartsReport 是 DetachedParts 检查的结构化结果。
+//
+// 语义约定与 TooManyPartsReport 一致：Execution 与 Outcome 分离；
+// detached 目录有内容说明该表状态值得人工核查，不等于数据丢失；
+// no_match 不等于集群健康（只覆盖被检查节点的本地视图）；时间戳是各
+// 节点各自的采集时刻；即使顶层返回 error，报告中已保留的有效证据仍然成立。
+type DetachedPartsReport struct {
+	CheckID     string
+	RuleVersion string
+
+	StartedAt  time.Time
+	FinishedAt time.Time
+
+	Execution Execution
+	Outcome   Outcome
+
+	Targets   []NodeResult
+	Matches   []DetachedMatch
 	NextSteps []FollowUp
 }
 

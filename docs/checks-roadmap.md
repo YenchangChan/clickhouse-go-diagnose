@@ -19,7 +19,7 @@
 |---|---|---|---|---|---|
 | 4 | `ReplicationQueueBacklog` | **✅ 已完成（2026-11-13）**：服务端按 (库,表) 聚合 + 客户端三条阈值规则（深度/最老条目年龄/重试次数），真机验证见 docs/compatibility.md（故障分支复用 NO_REPLICA_HAS_PART 注入条目） | 已有注入手段；普通 get/merge 积压也可由停 Keeper 制造 | 低（复用度高） |
 | 5 | `DiskSpaceLow` | **✅ 已完成（2026-11-13）**：system.disks 两条规则（剩余占比 <= 阈值、保留量击穿），真机验证见 docs/compatibility.md（阈值 100 验证判定链路，真实磁盘满未构造） | 本机磁盘可控，造小阈值即可触发 | 低 |
-| 6 | `DetachedParts` | detached 目录中异常数量的 part（误操作、清理残留） | `system.detached_parts` | `DETACH PART` 即可制造 | 低 |
+| 6 | `DetachedParts` | **✅ 已完成（2026-11-13）**：逐 part 理由（broken / 服务端自行下线）+ 单表数量阈值，真机验证见 docs/compatibility.md（DETACH PART 实测空 reason 语义；修复驱动 Nullable Scan 限制） | `DETACH PART` 即可制造 | 低 |
 
 ## 暂缓 / 需条件
 
@@ -48,4 +48,5 @@
 ~~`ReplicaStatus`~~（✅ 2026-11-13 完成，复用 Keeper 注入思路）→
 ~~`MutationsStuck`~~（✅ 2026-11-13 完成）→
 ~~`ReplicationQueueBacklog`~~（✅ 2026-11-13 完成，P2 首项收官）→
-~~`DiskSpaceLow`~~（✅ 2026-11-13 完成）→ `DetachedParts`。
+~~`DiskSpaceLow`~~（✅ 2026-11-13 完成）→
+~~`DetachedParts`~~（✅ 2026-11-13 完成，**P1/P2 清单收官，共 6 个检查**）。

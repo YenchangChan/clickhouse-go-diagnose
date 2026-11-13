@@ -88,6 +88,15 @@
 - 判定语义：占比按 `free*100/total` 向下取整、`<=` 阈值命中；`total_space=0` 的磁盘占比记 -1、不参与占比规则；`keep_free_space > 0 且 free < keep_free_space` 单独命中"保留量击穿"（与占比无关）。
 - **真机无法制造真实磁盘满**：本机磁盘未做填充实验（写满会影响集群与其他测试），"真实低水位"路径未在真机复现，由阈值 100 的判定链路验证 + 单测边界覆盖；接入现场前建议在隔离环境做一次真实水位验证。
 
+### 2026-11-13 · ClickHouse 26.10.3.7 · 同集群 · `DetachedParts` 检查
+
+- 固定查询直接在真实 `system.detached_parts` 上执行：26.10 列集 `database/table/partition_id/name/bytes_on_disk/modification_time/disk/path/reason/min_block_number/max_block_number/level`，本检查只用其中古老列。真机上该表已有 60 条 `system` 库日志表的 `broken-on-start` 残留——**默认排除 system/information_schema 是必要的**，否则用户库检查被环境噪音淹没。
+- **reason 字段实测语义**：用户 `ALTER TABLE ... DETACH PART` 后 reason 为**空字符串（非 NULL）**（`isNull(reason)=0`），与官方文档一致——reason 非空即服务端自行下线。判定规则据此设计：`broken` 前缀 → 损坏；非空非 broken → 服务端自行下线；空 → 用户动作，只参与数量阈值。
+- **驱动层 Nullable 限制（真机实测，v2.15.0）**：`system.detached_parts.reason` 是 `Nullable(String)`，native 路径可直接 `Scan` 进 `sql.NullString`，但 **database/sql（HTTP）路径会报 `unsupported Scan, storing driver.Value type *string into type *string`**——该驱动对 Nullable 列下发的 driver.Value 是 `*string`。修法是服务端 `coalesce(reason, '')`：NULL 的语义与空串完全一致（都是用户 detach），不损失事实。此前各检查未踩坑是因为没有直接扫描 Nullable 列（backlog 的 `last_exception` 走了服务端聚合）。
+- 真机验证：fixture 表 `DETACH PART` 后默认阈值 `complete/no_match`（单条空 reason 用户 detach 不触发），阈值 1 时 `complete/matched` 且观测集合与服务端 `system.detached_parts` 逐条一致（非同源核对）；HTTP/database/sql 路径通过；cleanup 先 `ATTACH DETACHED` 再 DROP，无 detached 目录残留。
+- **环境 flake（真机实测）**：该环境的 INSERT 偶发走 async insert 且 `Wait for async insert timeout (120000 ms) exceeded`——多个测试快速建表/插数/删表循环时后台异步插入池偶发饿死。fixture 的 INSERT 显式 `SETTINGS async_insert = 0, wait_for_async_insert = 0` 后连续 5 轮全量集成稳定通过。
+- `broken`/服务端自行下线的 part 未在用户库真机复现（system 库的 broken-on-start 残留被默认排除；用户表制造损坏 part 需写坏文件，不做）——两条逐 part 理由规则由单测覆盖判定链路，真机验证了空 reason 语义与数量规则。
+
 
 **v2.15.0 驱动实测限制（对 ckman 接入重要）：**
 
@@ -114,3 +123,5 @@
 - [ ] `MutationsStuck` 固定查询在更旧服务器版本的 `system.mutations` 列集与 `dateDiff('second', ...)` 可用性（26.10 已验证；所选列均为古老列，预期旧版本可用，未实测）
 - [ ] `ReplicationQueueBacklog` 固定查询在更旧服务器版本的 `system.replication_queue` 列集与 `countIf`/`dateDiff('second', min(create_time), now())` 可用性（26.10 已验证；所选列均为古老列，预期旧版本可用，未实测）
 - [ ] `DiskSpaceLow` 真实低水位/保留量击穿场景（本机未做磁盘填充；判定链路由阈值 100 与服务端事实比对验证，边界由单测覆盖），以及更旧服务器版本的 `system.disks` 列集
+- [ ] `DetachedParts` 的 `broken`/服务端自行下线 part 在用户库的真实复现（需写坏文件，未做；空 reason 语义与数量规则已真机验证，broken 规则由单测覆盖），以及更旧服务器版本的 `system.detached_parts` 列集与 `coalesce` 可用性
+- [ ] clickhouse-go database/sql 对 Nullable 列的 Scan 限制在其他 Nullable 列/其他驱动版本的复验（见 DetachedParts 一节；当前以服务端 coalesce 规避）

@@ -18,7 +18,10 @@
 //     最老条目年龄、重试次数超阈值），数据源 system.replication_queue
 //     按 (库, 表) 的服务端聚合，覆盖全部条目类型；
 //   - [CheckDiskSpaceLow]：识别剩余空间低于水位的磁盘（占比阈值、
-//     keep_free_space 保留量击穿），数据源 system.disks。
+//     keep_free_space 保留量击穿），数据源 system.disks；
+//   - [CheckDetachedParts]：识别 detached 目录中的异常 part（服务端判定
+//     损坏、服务端自行下线、单表数量超阈值），数据源 system.detached_parts，
+//     默认排除 system/information_schema。
 //
 // 结果只陈述"观测到了什么"，不推断数据是否永久丢失、故障起因或能否自愈。
 // 匹配/超阈值不等于确认需要修复；无匹配不等于集群健康。库不执行修复，
@@ -57,9 +60,12 @@
 // [Querier] 与 [Rows] 是最小接口。集群发现、凭据、TLS 与连接生命周期由
 // 调用方管理；库只调用 Query，并对返回的 Rows 调用 Close。
 //
-//   - Rows.Scan 必须支持 *sql.NullString：检查以 NullString 读取四个字符串
+//   - Rows.Scan 必须支持 *sql.NullString：检查以 NullString 读取字符串
 //     投影列。clickhouse-go v2 的 ScanRow 不支持 *any 目标，NullString 在
-//     clickhouse-go v2 与 database/sql 两条路径上都受支持；
+//     clickhouse-go v2 与 database/sql 两条路径上都受支持。注意 Nullable
+//     列是例外：database/sql 层对 Nullable 列下发的 driver.Value 是
+//     *string，无法直接 Scan 进 NullString（v2.15.0 + HTTP 实测）——固定
+//     查询对 Nullable 列一律服务端 coalesce 后投影；
 //   - Next 必须遵守传入 Query 的 context，取消后尽快返回 false；适配器必须
 //     真实传递 context，不能用后台 goroutine 提前返回来伪装取消；
 //   - 迭代过程或结束时的错误通过 Err 报告，不得静默结束；Close 必须幂等，
