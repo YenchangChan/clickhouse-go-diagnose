@@ -8,7 +8,8 @@
 
 - [实现计划](docs/implementation-plan.md)：首个检查的接口、实施步骤、验收与接入方式。
 - [检查路线图](docs/checks-roadmap.md)：后续候选检查清单与优先级。
-- [方案背景](docs/ai-diagnostics.md)：产品边界、已有实现依据与后续方向。
+- [方案背景（原始提案）](docs/ai-diagnostics.md)：clickhouse-client AI 功能调研、产品方向决策与三层架构（clickhouse-doctor CLI / diagnose 库 / driver）。
+- [抽取分析笔记](docs/extraction-notes.md)：既有诊断平台源码的可提炼经验与需要收紧的推断。
 - [兼容性](docs/compatibility.md)：已验证版本、协议与实测限制。
 
 ## v0 范围
