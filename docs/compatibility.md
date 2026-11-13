@@ -14,6 +14,14 @@
 - 权限路径：无权限用户查询返回可识别失败（`query_failed` + `ErrNoUsableObservation`，服务端 code 497），不会被误判为空结果。
 - HTTP 协议：通过 database/sql + `http://` DSN 验证可用。
 
+### 2026-11-13 · ClickHouse 26.10.3.7 · 同集群 · `TooManyParts` 检查
+
+- 固定查询直接在真实 `system.parts` 上执行：`active` 过滤、`GROUP BY database, table, partition`、`toString(count())`/`toString(sum(bytes_on_disk))` 聚合与字符串列扫描全部可用。
+- 真实碎片化场景（`integration/too_many_parts_test.go`）：非复制表 + `SYSTEM STOP MERGES <table>`（该语法存在，可按表停合并）+ 12 次单行 INSERT → 12 个独立 part，阈值 5 时返回 `complete + matched`，`Parts=12`，`DiskBytes` 非空，三条建议（合并吞吐/写入批次/分区键）齐全；阈值 2^30 时返回 `complete + no_match`。
+- HTTP/database/sql 路径同样验证通过。
+- 默认阈值 1000 与既有运维经验对齐（warning 档）；阈值是判定基线而非服务端硬限制。
+- `SYSTEM STOP MERGES` 为会话/表级状态，测试通过 DROP DATABASE 清理；未验证跨版本该语法（更旧版本可能只支持全局）。
+
 **真实 `NO_REPLICA_HAS_PART` 异常匹配（同一天，同一集群，Keeper 在线）：**
 
 - 故障构造：`scripts/inject_no_replica_has_part.py` —— 同一 Keeper 路径挂两个副本（`r1`/`r2`），向复制日志追加一条 **merge** 条目，其源 part 在任何副本上都不存在；恢复回放后两个副本的队列条目都带着真实异常持续重试。
@@ -58,3 +66,4 @@
 - [ ] 会话设置（result_overflow_mode 等）对结果完整性的影响
 - [ ] HTTP 直连路径（v2.15 `Options.Protocol` 字段失效，见上）在 ckman 实际封装中的等价验证
 - [ ] 多分片／多服务器拓扑下的真实跨节点归并（本次为单机双副本）
+- [ ] `TooManyParts` 固定查询在更旧服务器版本的列集与 `SYSTEM STOP MERGES` 按表语法（26.10 已验证）

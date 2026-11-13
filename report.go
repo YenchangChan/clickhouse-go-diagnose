@@ -64,6 +64,12 @@ const (
 	AdviceCompleteNodeCoverage = "complete_node_coverage"
 	// AdviceRerunWithHigherRowLimit 结果被截断，需提高上限后复跑。
 	AdviceRerunWithHigherRowLimit = "rerun_with_higher_row_limit"
+	// AdviceInspectMergeThroughput 核对同表是否有进行中的合并与合并积压。
+	AdviceInspectMergeThroughput = "inspect_merge_throughput"
+	// AdviceReviewInsertBatchSize 核对写入批次大小与 async_insert。
+	AdviceReviewInsertBatchSize = "review_insert_batch_size"
+	// AdviceReviewPartitionKey 核对分区键粒度是否过细。
+	AdviceReviewPartitionKey = "review_partition_key"
 )
 
 var (
@@ -139,6 +145,45 @@ type ReplicationQueueReport struct {
 
 	Targets   []NodeResult
 	Matches   []QueueMatch
+	NextSteps []FollowUp
+}
+
+// PartsObservation 是一条分区统计证据：哪个节点报告了该分区的 part 数。
+type PartsObservation struct {
+	NodeID    string
+	Parts     int    // 该节点上该分区的活跃 part 数
+	DiskBytes string // 磁盘占用，服务端 toString 后的十进制字符串
+}
+
+// PartsMatch 是按 (ShardID, Database, Table, Partition) 归并后的分区统计。
+// 同一分区多个节点报告时保留每个来源节点；Parts 取各节点中的最大值。
+// 超过阈值说明该分区在对应节点上存在写入碎片化风险，不构成修复指令。
+type PartsMatch struct {
+	ShardID      string
+	Database     string
+	Table        string
+	Partition    string
+	Parts        int // 观测中的最大 part 数
+	Observations []PartsObservation
+}
+
+// TooManyPartsReport 是 TooManyParts 检查的结构化结果。
+//
+// 语义约定与 ReplicationQueueReport 一致：Execution 与 Outcome 分离；
+// 超阈值不等于需要立即修复，no_match 不等于集群健康；时间戳是各节点
+// 各自的采集时刻；即使顶层返回 error，报告中已保留的有效证据仍然成立。
+type TooManyPartsReport struct {
+	CheckID     string
+	RuleVersion string
+
+	StartedAt  time.Time
+	FinishedAt time.Time
+
+	Execution Execution
+	Outcome   Outcome
+
+	Targets   []NodeResult
+	Matches   []PartsMatch
 	NextSteps []FollowUp
 }
 

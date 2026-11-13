@@ -7,11 +7,11 @@
 
 ## P1（建议先做）
 
-| # | 检查 | 检测什么 | 数据来源 | 真机验证方式 | 难度 |
-|---|---|---|---|---|---|
-| 1 | `TooManyParts` | 单表单分区活跃 part 数超阈值，合并消化速度跟不上写入 | `system.parts`（active、per partition 聚合） | 循环小批量 INSERT 制造几百个 part，无需 Keeper | 低（纯阈值+聚合，最稳的表） |
-| 2 | `ReplicaStatus` | 副本只读、会话过期（is_readonly / is_session_expired）、复制延迟（absolute_delay）、落后条目（future_parts/queue_size 汇总） | `system.replicas` | 停 Keeper 或断开会话触发 readonly/session_expired；延迟项造 active_replicas 差异 | 中（需要 Keeper 操控，但注入脚本框架已有） |
-| 3 | `MutationsStuck` | 长期未完成的 mutation、失败 mutation 及其 last_exception | `system.mutations`（is_done=0） | 构造必然失败的 ALTER（如 MODIFY 不兼容类型），mutation 卡住并留下异常文本 | 低 |
+| # | 检查 | 状态 | 验证方式 | 难度 |
+|---|---|---|---|---|
+| 1 | `TooManyParts` | **✅ 已完成（2026-11-13）**：框架泛化 + 真机验证见 docs/compatibility.md | 循环小批量 INSERT 制造几百个 part，无需 Keeper | 低（纯阈值+聚合，最稳的表） |
+| 2 | `ReplicaStatus` | 待实现 | 停 Keeper 或断开会话触发 readonly/session_expired；延迟项造 active_replicas 差异 | 中（需要 Keeper 操控，注入脚本框架已有） |
+| 3 | `MutationsStuck` | 待实现 | 构造必然失败的 ALTER（如 MODIFY 不兼容类型），mutation 卡住并留下异常文本 | 低 |
 
 ## P2（有价值，第二批）
 
@@ -44,6 +44,6 @@
 
 ## 建议顺序
 
-`TooManyParts`（最稳、零外部依赖，顺带完成框架泛化）→
+~~`TooManyParts`~~（✅ 2026-11-13 完成，框架已泛化为 runner.go）→
 `ReplicaStatus`（运维价值最高，复用 Keeper 注入）→
 `MutationsStuck` → `ReplicationQueueBacklog` → 其余。

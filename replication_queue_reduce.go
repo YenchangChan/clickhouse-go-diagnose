@@ -100,44 +100,17 @@ func summarizeExecution(results []NodeResult) Execution {
 // summarizeOutcome 依据执行状态与匹配计算检查结果。
 // 覆盖不完整且没有匹配时是 unknown：不能把"只查了一部分没发现"说成"没有"。
 func summarizeOutcome(exe Execution, matches []QueueMatch) Outcome {
-	if len(matches) > 0 {
+	return outcomeFor(exe, len(matches) > 0)
+}
+
+// outcomeFor 是检查无关的结果判定：有匹配即 matched；完整覆盖且无匹配
+// 才是 no_match；其余（覆盖不完整或失败）一律 unknown。
+func outcomeFor(exe Execution, hasMatches bool) Outcome {
+	if hasMatches {
 		return OutcomeMatched
 	}
 	if exe == ExecutionComplete {
 		return OutcomeNoMatch
 	}
 	return OutcomeUnknown
-}
-
-// buildFollowUps 依据结果生成后续核查建议。建议只引导核查，不构成修复方案。
-func buildFollowUps(exe Execution, results []NodeResult, matches []QueueMatch) []FollowUp {
-	var steps []FollowUp
-	if len(matches) > 0 {
-		steps = append(steps,
-			FollowUp{
-				Code:   AdviceVerifyReplicasForPart,
-				Detail: "在匹配分片的各副本上核对 part 是否存在及覆盖情况；匹配基于队列历史异常，异常可能已是历史状态",
-			},
-			FollowUp{
-				Code:   AdviceInspectQueueOnSourceNodes,
-				Detail: "在来源节点核对对应队列条目的创建时间与重试情况，确认是否仍然卡住",
-			},
-		)
-	}
-	if exe != ExecutionComplete {
-		steps = append(steps, FollowUp{
-			Code:   AdviceCompleteNodeCoverage,
-			Detail: "本次检查未完整覆盖全部目标节点；未覆盖范围不影响已有证据，但异常清单可能不完整",
-		})
-	}
-	for _, r := range results {
-		if r.Truncated {
-			steps = append(steps, FollowUp{
-				Code:   AdviceRerunWithHigherRowLimit,
-				Detail: "部分节点结果达到保留上限被截断，复跑并提高 MaxRowsPerNode 才能保证清单完整",
-			})
-			break
-		}
-	}
-	return steps
 }

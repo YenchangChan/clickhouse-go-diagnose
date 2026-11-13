@@ -3,8 +3,6 @@ package diagnose
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"sync"
 	"time"
 )
 
@@ -20,22 +18,6 @@ type ReplicationQueueOptions struct {
 	// MaxRowsPerNode 是单节点保留的匹配行上限；读取到第 N+1 条即停止并标记截断。
 	// 默认 1000。
 	MaxRowsPerNode int
-}
-
-const (
-	defaultTimeout        = 10 * time.Second
-	defaultNodeTimeout    = 2 * time.Second
-	defaultConcurrency    = 4
-	defaultMaxRowsPerNode = 1000
-)
-
-// Target 是一个被检查的目标节点。NodeID 在一次调用内必须全局唯一
-// （同一主机上的多个实例须使用不同 NodeID）；ShardID 在本次调用中稳定，
-// 不同分片绝不因同名表或 part 合并。Querier 由调用方构造，库不管理连接。
-type Target struct {
-	NodeID  string
-	ShardID string
-	Querier Querier
 }
 
 // CheckReplicationQueueFailures 检查指定节点复制队列中记录的
@@ -55,95 +37,45 @@ func CheckReplicationQueueFailures(
 	targets []Target,
 	opts ReplicationQueueOptions,
 ) (ReplicationQueueReport, error) {
-	if len(targets) == 0 {
-		return ReplicationQueueReport{}, inputError("targets 为空，无法开展检查")
-	}
-	seen := make(map[string]struct{}, len(targets))
-	for i, t := range targets {
-		if t.NodeID == "" {
-			return ReplicationQueueReport{}, inputError("targets[%d].NodeID 为空", i)
-		}
-		if t.ShardID == "" {
-			return ReplicationQueueReport{}, inputError("targets[%d](%s).ShardID 为空", i, t.NodeID)
-		}
-		if t.Querier == nil {
-			return ReplicationQueueReport{}, inputError("targets[%d](%s).Querier 为 nil", i, t.NodeID)
-		}
-		if _, dup := seen[t.NodeID]; dup {
-			return ReplicationQueueReport{}, inputError("NodeID %q 重复", t.NodeID)
-		}
-		seen[t.NodeID] = struct{}{}
+	if err := validateTargets(targets); err != nil {
+		return ReplicationQueueReport{}, err
 	}
 	if opts.Timeout < 0 || opts.NodeTimeout < 0 || opts.Concurrency < 0 || opts.MaxRowsPerNode < 0 {
 		return ReplicationQueueReport{}, inputError("预算项不允许为负值")
 	}
-	if opts.Timeout == 0 {
-		opts.Timeout = defaultTimeout
-	}
-	if opts.NodeTimeout == 0 {
-		opts.NodeTimeout = defaultNodeTimeout
-	}
-	if opts.Concurrency == 0 {
-		opts.Concurrency = defaultConcurrency
-	}
-	if opts.MaxRowsPerNode == 0 {
-		opts.MaxRowsPerNode = defaultMaxRowsPerNode
-	}
 
-	totalCtx, cancelTotal := context.WithTimeout(ctx, opts.Timeout)
-	defer cancelTotal()
+	b := budget{
+		timeout:     opts.Timeout,
+		nodeTimeout: opts.NodeTimeout,
+		concurrency: opts.Concurrency,
+		maxRows:     opts.MaxRowsPerNode,
+	}
+	fillBudget(&b, defaultTimeout, defaultNodeTimeout, defaultConcurrency, defaultMaxRowsPerNode)
+
+	c := collector[nodeObservation]{
+		sql: replicationQueueSQL,
+		scan: func(t Target, rows Rows) (nodeObservation, bool, error) {
+			var db, table, part, lastExcp sql.NullString
+			if err := rows.Scan(&db, &table, &part, &lastExcp); err != nil {
+				return nodeObservation{}, false, err
+			}
+			excp := lastExcp.String
+			if !matchesException(excp) {
+				return nodeObservation{}, false, nil
+			}
+			return nodeObservation{
+				ShardID:       t.ShardID,
+				NodeID:        t.NodeID,
+				Database:      db.String,
+				Table:         table.String,
+				PartName:      part.String,
+				LastException: excp,
+			}, true, nil
+		},
+	}
 
 	start := time.Now()
-	// 全部目标先记为 not_started；被调度并产出结果的槽位被覆盖。
-	results := make([]NodeResult, len(targets))
-	for i, t := range targets {
-		results[i] = NodeResult{
-			NodeID:      t.NodeID,
-			ShardID:     t.ShardID,
-			Status:      NodeNotStarted,
-			ErrCategory: ErrCatNotStarted,
-		}
-	}
-
-	var (
-		mu           sync.Mutex
-		observations []nodeObservation
-	)
-
-	jobs := make(chan int)
-	go func() {
-		defer close(jobs)
-		for i := range targets {
-			select {
-			case jobs <- i:
-			case <-totalCtx.Done():
-				return
-			}
-		}
-	}()
-
-	workers := opts.Concurrency
-	if workers > len(targets) {
-		workers = len(targets)
-	}
-	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range jobs {
-				res, obs := runTarget(totalCtx, targets[i], opts.NodeTimeout, opts.MaxRowsPerNode)
-				results[i] = res
-				if len(obs) > 0 {
-					mu.Lock()
-					observations = append(observations, obs...)
-					mu.Unlock()
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	finish := time.Now()
+	results, observations, cerr := collect(ctx, targets, b, c)
 
 	matches := reduceMatches(observations)
 	exe := summarizeExecution(results)
@@ -152,7 +84,7 @@ func CheckReplicationQueueFailures(
 		CheckID:     checkID,
 		RuleVersion: ruleVersion,
 		StartedAt:   start,
-		FinishedAt:  finish,
+		FinishedAt:  time.Now(),
 		Execution:   exe,
 		Outcome:     outcome,
 		Targets:     results,
@@ -161,7 +93,7 @@ func CheckReplicationQueueFailures(
 	}
 
 	// 取消或总预算耗尽优先返回 context 错误；报告中的证据仍然成立。
-	if cerr := totalCtx.Err(); cerr != nil {
+	if cerr != nil {
 		return report, cerr
 	}
 	if exe == ExecutionFailed && len(observations) == 0 {
@@ -170,124 +102,20 @@ func CheckReplicationQueueFailures(
 	return report, nil
 }
 
-// runTarget 采集单个目标节点。节点上的有效证据在任何失败路径下都保留；
-// 先读到有效行再发生迭代错误的节点不能计入完整成功。
-func runTarget(total context.Context, t Target, nodeTimeout time.Duration, maxRows int) (NodeResult, []nodeObservation) {
-	res := NodeResult{
-		NodeID:      t.NodeID,
-		ShardID:     t.ShardID,
-		Status:      NodeNotStarted,
-		ErrCategory: ErrCatNotStarted,
+// buildFollowUps 依据结果生成后续核查建议。建议只引导核查，不构成修复方案。
+func buildFollowUps(exe Execution, results []NodeResult, matches []QueueMatch) []FollowUp {
+	var steps []FollowUp
+	if len(matches) > 0 {
+		steps = append(steps,
+			FollowUp{
+				Code:   AdviceVerifyReplicasForPart,
+				Detail: "在匹配分片的各副本上核对 part 是否存在及覆盖情况；匹配基于队列历史异常，异常可能已是历史状态",
+			},
+			FollowUp{
+				Code:   AdviceInspectQueueOnSourceNodes,
+				Detail: "在来源节点核对对应队列条目的创建时间与重试情况，确认是否仍然卡住",
+			},
+		)
 	}
-	if err := total.Err(); err != nil {
-		res.ErrCategory = classifyContextError(err)
-		res.ErrMessage = err.Error()
-		return res, nil
-	}
-
-	nodeCtx, cancelNode := context.WithTimeout(total, nodeTimeout)
-	defer cancelNode()
-
-	// 节点已实际开始采集：清除 not_started 的初始分类，改由各失败路径填写。
-	res.ErrCategory = ""
-	res.ErrMessage = ""
-	res.Status = NodeFailed
-	res.StartedAt = time.Now()
-
-	rows, err := t.Querier.Query(nodeCtx, replicationQueueSQL)
-	if err != nil {
-		res.ErrCategory = classifyQueryError(nodeCtx, err)
-		res.ErrMessage = err.Error()
-		res.FinishedAt = time.Now()
-		return res, nil
-	}
-
-	var (
-		obs       []nodeObservation
-		read      int
-		truncated bool
-		failMsg   string
-	)
-
-readLoop:
-	for rows.Next() {
-		// 用 sql.NullString 而不是 *any：clickhouse-go v2 的 ScanRow 不支持
-		// *any 目标（真机验证发现），NullString 在 clickhouse-go v2 与
-		// database/sql 两条路径上都受支持，且天然处理 NULL。
-		var db, table, part, lastExcp sql.NullString
-		if err := rows.Scan(&db, &table, &part, &lastExcp); err != nil {
-			res.ErrCategory = ErrCatScanFailed
-			failMsg = err.Error()
-			break readLoop
-		}
-		read++
-		excpS := lastExcp.String
-		if !matchesException(excpS) {
-			continue
-		}
-		if len(obs) >= maxRows {
-			// 第 N+1 条只用于截断检测，不保留。
-			truncated = true
-			break readLoop
-		}
-		obs = append(obs, nodeObservation{
-			ShardID:       t.ShardID,
-			Database:      db.String,
-			Table:         table.String,
-			PartName:      part.String,
-			NodeID:        t.NodeID,
-			LastException: excpS,
-		})
-	}
-
-	// 退出循环后按优先级分类失败原因；context 取消优先，避免被适配器的
-	// 迭代错误文本掩盖真实原因。
-	if res.ErrCategory == "" {
-		if nerr := nodeCtx.Err(); nerr != nil {
-			res.ErrCategory = classifyContextError(nerr)
-			failMsg = nerr.Error()
-		} else if rerr := rows.Err(); rerr != nil {
-			res.ErrCategory = ErrCatIterationFailed
-			failMsg = rerr.Error()
-		}
-	}
-	if cerr := rows.Close(); cerr != nil && res.ErrCategory == "" {
-		res.ErrCategory = ErrCatCloseFailed
-		failMsg = cerr.Error()
-	}
-
-	res.RowsRead = read
-	res.RowsKept = len(obs)
-	res.Truncated = truncated
-	res.FinishedAt = time.Now()
-
-	if res.ErrCategory != "" {
-		res.ErrMessage = failMsg
-		res.Status = NodeFailed
-		return res, obs
-	}
-	res.Status = NodeOK
-	return res, obs
-}
-
-// classifyContextError 区分超时与取消。
-func classifyContextError(err error) string {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return ErrCatTimeout
-	}
-	return ErrCatCanceled
-}
-
-// classifyQueryError 对 Query 阶段的错误分类：context 类错误优先于通用查询失败。
-func classifyQueryError(nodeCtx context.Context, err error) string {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return ErrCatTimeout
-	}
-	if errors.Is(err, context.Canceled) {
-		return ErrCatCanceled
-	}
-	if nerr := nodeCtx.Err(); nerr != nil {
-		return classifyContextError(nerr)
-	}
-	return ErrCatQueryFailed
+	return append(steps, coverageFollowUps(exe, results)...)
 }

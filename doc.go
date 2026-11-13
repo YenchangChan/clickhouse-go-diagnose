@@ -2,11 +2,16 @@
 //
 // # 当前范围
 //
-// 当前仅实现一个检查：[CheckReplicationQueueFailures]，识别复制队列
-// （system.replication_queue）中记录的 NO_REPLICA_HAS_PART 异常。
+// 当前实现两个检查，共用同一套采集调度（固定 worker 数、总/单节点预算、
+// N+1 截断检测）与结果契约：
 //
-// 结果只陈述"队列记录了该异常"，不推断数据是否永久丢失、故障起因或能否自愈。
-// 匹配异常记录不等于确认数据丢失；无匹配不等于集群健康。库不执行修复，
+//   - [CheckReplicationQueueFailures]：识别复制队列（system.replication_queue）
+//     中记录的 NO_REPLICA_HAS_PART 异常，按 (分片, 库, 表, part) 归并；
+//   - [CheckTooManyParts]：识别活跃 part 数超过阈值的表分区
+//     （system.parts 按 (分片, 库, 表, 分区) 聚合），属阈值判定而非异常匹配。
+//
+// 结果只陈述"观测到了什么"，不推断数据是否永久丢失、故障起因或能否自愈。
+// 匹配/超阈值不等于确认需要修复；无匹配不等于集群健康。库不执行修复，
 // 不发现拓扑、不管理凭据、不管理连接生命周期，只关闭自己取得的 Rows。
 //
 // # 结果契约
