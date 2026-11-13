@@ -82,6 +82,10 @@ const (
 	AdviceInspectMutationFailure = "inspect_mutation_failure"
 	// AdviceCheckMutationProgress 核对长时间未完成 mutation 是否真的在推进。
 	AdviceCheckMutationProgress = "check_mutation_progress"
+	// AdviceInspectDiskUsage 按表/分区核对磁盘占用，定位增长来源。
+	AdviceInspectDiskUsage = "inspect_disk_usage"
+	// AdviceReviewTTLRetention 核对 TTL 与保留策略是否生效。
+	AdviceReviewTTLRetention = "review_ttl_retention"
 )
 
 // 副本状态判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
@@ -115,6 +119,15 @@ const (
 	ReasonQueueOldestEntry = "queue_oldest_entry_aged"
 	// ReasonQueueMaxRetries 队列条目最大重试次数达到阈值。
 	ReasonQueueMaxRetries = "queue_max_retries_exceeded"
+)
+
+// 磁盘水位判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
+const (
+	// ReasonDiskSpaceLow 剩余空间占比低于阈值（free/total <= 阈值）。
+	ReasonDiskSpaceLow = "disk_space_low"
+	// ReasonDiskReserveBreached 剩余空间已低于 keep_free_space 保留量，
+	// 服务端将拒绝继续写入新数据。
+	ReasonDiskReserveBreached = "disk_reserve_breached"
 )
 
 var (
@@ -372,6 +385,52 @@ type QueueBacklogReport struct {
 
 	Targets   []NodeResult
 	Matches   []QueueBacklogMatch
+	NextSteps []FollowUp
+}
+
+// DiskObservation 是一条磁盘水位证据：哪个节点的哪块磁盘报告了容量水位，
+// 以及该观测命中的稳定理由码（ReasonDisk* 常量）。
+type DiskObservation struct {
+	NodeID        string
+	FreeBytes     uint64
+	TotalBytes    uint64
+	KeepFreeBytes uint64
+	FreePercent   int // 0-100；total_space=0 时为 -1（不可计算）
+
+	Reasons []string
+}
+
+// DiskSpaceMatch 是按 (ShardID, DiskName, Path) 归并后的磁盘水位对象。
+// 同一分片内不同节点的同名同路径磁盘合并展示，但保留每个来源节点；
+// FreePercent 取观测中的最小值（最差水位），不做跨节点平均。
+// 匹配说明容量水位值得人工核查，不等于服务已不可用。
+type DiskSpaceMatch struct {
+	ShardID     string
+	DiskName    string
+	Path        string
+	FreePercent int // 观测中最差（最小）水位；全部不可计算时为 -1
+
+	Observations []DiskObservation
+}
+
+// DiskSpaceReport 是 DiskSpaceLow 检查的结构化结果。
+//
+// 语义约定与 TooManyPartsReport 一致：Execution 与 Outcome 分离；
+// 水位低不等于已写入失败（除保留量被击穿外）；no_match 不等于集群健康
+// （只覆盖被检查节点上的本地磁盘视图）；时间戳是各节点各自的采集时刻；
+// 即使顶层返回 error，报告中已保留的有效证据仍然成立。
+type DiskSpaceReport struct {
+	CheckID     string
+	RuleVersion string
+
+	StartedAt  time.Time
+	FinishedAt time.Time
+
+	Execution Execution
+	Outcome   Outcome
+
+	Targets   []NodeResult
+	Matches   []DiskSpaceMatch
 	NextSteps []FollowUp
 }
 

@@ -2,7 +2,7 @@
 //
 // # 当前范围
 //
-// 当前实现四个检查，共用同一套采集调度（固定 worker 数、总/单节点预算、
+// 当前实现六个检查，共用同一套采集调度（固定 worker 数、总/单节点预算、
 // N+1 截断检测）与结果契约：
 //
 //   - [CheckReplicationQueueFailures]：识别复制队列（system.replication_queue）
@@ -16,7 +16,9 @@
 //     数据源 system.mutations，已完成条目由固定查询在服务端过滤；
 //   - [CheckReplicationQueueBacklog]：识别复制队列积压（在队条目数、
 //     最老条目年龄、重试次数超阈值），数据源 system.replication_queue
-//     按 (库, 表) 的服务端聚合，覆盖全部条目类型。
+//     按 (库, 表) 的服务端聚合，覆盖全部条目类型；
+//   - [CheckDiskSpaceLow]：识别剩余空间低于水位的磁盘（占比阈值、
+//     keep_free_space 保留量击穿），数据源 system.disks。
 //
 // 结果只陈述"观测到了什么"，不推断数据是否永久丢失、故障起因或能否自愈。
 // 匹配/超阈值不等于确认需要修复；无匹配不等于集群健康。库不执行修复，

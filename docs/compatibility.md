@@ -81,6 +81,13 @@
 - 故障路径：复用 `scripts/inject_no_replica_has_part.py` 注入的失败 merge 条目（该条目持续重试、常驻队列），收紧阈值（depth≥1、age≥1s、重试规则关闭）后故障表被报出且深度理由命中；报出的匹配集合与服务端 `GROUP BY` 聚合事实逐项一致。默认阈值下的健康判定（depth<100、age<1h）对单条在途故障条目正确保持静默。
 - 集成测试的 Keeper 夹具路径按运行时刻唯一：`DROP TABLE` 对副本 znode 的清理是异步收尾（ReplicaStatus 阶段已实测），固定路径重跑会撞 `REPLICA_ALREADY_EXISTS` 或吃到上一轮残留的 log 条目；路径唯一从根上规避，留下的空 znode 目录无害。
 
+### 2026-11-13 · ClickHouse 26.10.3.7 · 同集群 · `DiskSpaceLow` 检查
+
+- 固定查询直接在真实 `system.disks` 上执行：26.10 列集含 `name/path/free_space/total_space/unreserved_space/keep_free_space` 及较新的 `type/object_storage_type/is_encrypted/is_read_only/is_write_once/is_remote/is_broken/cache_path`。本检查只用前五个中的古老列（`unreserved_space` 与 `is_broken` 不进查询，旧版本没有）。
+- 真机水位：`default` 盘 47.96GB / 55.04GB ≈ 87% 空闲，`keep_free_space=0`；默认阈值（10%）`complete/no_match`，阈值提到 100% 时每块 `total>0` 的磁盘命中且客户端算出的占比与服务端事实逐块一致（`integration/disk_space_test.go` 以服务端 `system.disks` 为期望集合，杜绝测试与实现同源）。
+- 判定语义：占比按 `free*100/total` 向下取整、`<=` 阈值命中；`total_space=0` 的磁盘占比记 -1、不参与占比规则；`keep_free_space > 0 且 free < keep_free_space` 单独命中"保留量击穿"（与占比无关）。
+- **真机无法制造真实磁盘满**：本机磁盘未做填充实验（写满会影响集群与其他测试），"真实低水位"路径未在真机复现，由阈值 100 的判定链路验证 + 单测边界覆盖；接入现场前建议在隔离环境做一次真实水位验证。
+
 
 **v2.15.0 驱动实测限制（对 ckman 接入重要）：**
 
@@ -106,3 +113,4 @@
 - [ ] `ReplicaStatus` 固定查询在更旧服务器版本的 `system.replicas` 列集（26.10 已验证）
 - [ ] `MutationsStuck` 固定查询在更旧服务器版本的 `system.mutations` 列集与 `dateDiff('second', ...)` 可用性（26.10 已验证；所选列均为古老列，预期旧版本可用，未实测）
 - [ ] `ReplicationQueueBacklog` 固定查询在更旧服务器版本的 `system.replication_queue` 列集与 `countIf`/`dateDiff('second', min(create_time), now())` 可用性（26.10 已验证；所选列均为古老列，预期旧版本可用，未实测）
+- [ ] `DiskSpaceLow` 真实低水位/保留量击穿场景（本机未做磁盘填充；判定链路由阈值 100 与服务端事实比对验证，边界由单测覆盖），以及更旧服务器版本的 `system.disks` 列集
