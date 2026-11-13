@@ -7,6 +7,7 @@
 ### 新增
 
 - `clickhouse-doctor` CLI（`doctor/` 独立 Go 模块）：命令行消费端，对指定节点运行 7 个检查并渲染报告。native 与 HTTP/database/sql 两条路径（可按节点混合）；`--node` 可重复传参（`shard-id@addr` / `shard-id@node-id@addr`，跨分片不归并）；`--json` 稳定输出契约（doctor 侧自有视图类型，核心库结构不变）；文本输出遵循结果契约纪律（partial/unknown 显式呈现、截断与节点失败可见、先证据后错误）。退出码：0 全部干净 / 1 调用连接错误 / 2 有匹配 / 3 覆盖不完整。真机验证：单节点全检查（replica_status 命中真实 readonly 病变表，exit 2）、同机双副本双目标（跨分片各一条匹配）、混合协议、JSON、连接失败路径。
+- `clickhouse-doctor` 检查阈值 flag：8 个可选阈值（`--parts-threshold`、`--replica-delay-seconds`、`--queue-depth-threshold`、`--queue-age-seconds`、`--queue-retries-threshold`、`--mutation-age-seconds`、`--disk-free-percent`、`--detached-count-threshold`），0 用库默认值、负数解析层拒绝。真机验证：3-part 夹具下低阈值 matched / 默认阈值 no_match / 负值拒绝。
 
 ## [v0.2.0] - 2026-11-13
 

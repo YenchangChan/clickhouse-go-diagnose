@@ -204,8 +204,9 @@ func viewFollowUps(fs []diagnose.FollowUp) []followUpView {
 }
 
 // runCheck 按名称调用核心库检查，并把报告转换为视图。
-// 顶层 error 始终记入视图 Err 字段，报告本身照常渲染（契约：先报告后错误）。
-func runCheck(ctx context.Context, name string, targets []diagnose.Target, total, node time.Duration) checkView {
+// 阈值透传（0 表示用库默认值）；顶层 error 始终记入视图 Err 字段，
+// 报告本身照常渲染（契约：先报告后错误）。
+func runCheck(ctx context.Context, name string, targets []diagnose.Target, total, node time.Duration, th thresholds) checkView {
 	v := checkView{Check: name, Targets: []targetView{}, Matches: []any{}, NextSteps: []followUpView{}}
 	switch name {
 	case checkQueueFailures:
@@ -226,7 +227,7 @@ func runCheck(ctx context.Context, name string, targets []diagnose.Target, total
 
 	case checkTooManyParts:
 		rep, err := diagnose.CheckTooManyParts(ctx, targets, diagnose.TooManyPartsOptions{
-			Timeout: total, NodeTimeout: node,
+			Timeout: total, NodeTimeout: node, PartsThreshold: th.parts,
 		})
 		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
 		for _, m := range rep.Matches {
@@ -242,7 +243,7 @@ func runCheck(ctx context.Context, name string, targets []diagnose.Target, total
 
 	case checkReplicaStatus:
 		rep, err := diagnose.CheckReplicaStatus(ctx, targets, diagnose.ReplicaStatusOptions{
-			Timeout: total, NodeTimeout: node,
+			Timeout: total, NodeTimeout: node, DelayThresholdSeconds: th.replicaDelaySeconds,
 		})
 		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
 		for _, m := range rep.Matches {
@@ -261,7 +262,7 @@ func runCheck(ctx context.Context, name string, targets []diagnose.Target, total
 
 	case checkMutationsStuck:
 		rep, err := diagnose.CheckMutationsStuck(ctx, targets, diagnose.MutationsStuckOptions{
-			Timeout: total, NodeTimeout: node,
+			Timeout: total, NodeTimeout: node, AgeThresholdSeconds: th.mutationAgeSeconds,
 		})
 		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
 		for _, m := range rep.Matches {
@@ -281,6 +282,9 @@ func runCheck(ctx context.Context, name string, targets []diagnose.Target, total
 	case checkQueueBacklog:
 		rep, err := diagnose.CheckReplicationQueueBacklog(ctx, targets, diagnose.QueueBacklogOptions{
 			Timeout: total, NodeTimeout: node,
+			DepthThreshold:      th.queueDepth,
+			AgeThresholdSeconds: th.queueAgeSeconds,
+			RetriesThreshold:    th.queueRetries,
 		})
 		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
 		for _, m := range rep.Matches {
@@ -300,7 +304,7 @@ func runCheck(ctx context.Context, name string, targets []diagnose.Target, total
 
 	case checkDiskSpaceLow:
 		rep, err := diagnose.CheckDiskSpaceLow(ctx, targets, diagnose.DiskSpaceOptions{
-			Timeout: total, NodeTimeout: node,
+			Timeout: total, NodeTimeout: node, FreePercentThreshold: th.diskFreePercent,
 		})
 		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
 		for _, m := range rep.Matches {
@@ -319,7 +323,7 @@ func runCheck(ctx context.Context, name string, targets []diagnose.Target, total
 
 	case checkDetachedParts:
 		rep, err := diagnose.CheckDetachedParts(ctx, targets, diagnose.DetachedPartsOptions{
-			Timeout: total, NodeTimeout: node,
+			Timeout: total, NodeTimeout: node, CountThreshold: th.detachedCount,
 		})
 		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
 		for _, m := range rep.Matches {

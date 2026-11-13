@@ -55,8 +55,46 @@ type options struct {
 	checks     string
 	timeout    time.Duration
 	nodeTO     time.Duration
+	thresholds thresholds
 	jsonOutput bool
 	showVer    bool
+}
+
+// thresholds 是各检查的判定阈值。约定：0 表示使用核心库默认值（与库的
+// 零值语义一致），负数在解析层拒绝。核心库负责判定，这里只透传。
+type thresholds struct {
+	replicaDelaySeconds int // replica_status：absolute_delay 秒数（库默认 300）
+	parts               int // too_many_parts：单分区 part 数（库默认 1000）
+	queueDepth          int // queue_backlog：单表在队条目数（库默认 100）
+	queueAgeSeconds     int // queue_backlog：最老条目年龄秒数（库默认 3600）
+	queueRetries        int // queue_backlog：最大重试次数（库默认 10）
+	mutationAgeSeconds  int // mutations_stuck：mutation 运行时长秒数（库默认 86400）
+	diskFreePercent     int // disk_space_low：磁盘剩余空间百分比（库默认 10）
+	detachedCount       int // detached_parts：单表 detached part 数（库默认 10）
+}
+
+func validateThresholds(t thresholds) error {
+	neg := func(name string, v int) error {
+		if v < 0 {
+			return fmt.Errorf("%s 不能为负", name)
+		}
+		return nil
+	}
+	for _, e := range []error{
+		neg("--replica-delay-seconds", t.replicaDelaySeconds),
+		neg("--parts-threshold", t.parts),
+		neg("--queue-depth-threshold", t.queueDepth),
+		neg("--queue-age-seconds", t.queueAgeSeconds),
+		neg("--queue-retries-threshold", t.queueRetries),
+		neg("--mutation-age-seconds", t.mutationAgeSeconds),
+		neg("--disk-free-percent", t.diskFreePercent),
+		neg("--detached-count-threshold", t.detachedCount),
+	} {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 // nodeFlags 支持重复传参：--node shard-1@host:9000 --node shard-2@host:9000。
@@ -152,6 +190,14 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	fs.StringVar(&opts.checks, "check", "all", "检查项：all 或逗号分隔的名称（见 --list-checks）")
 	fs.DurationVar(&opts.timeout, "timeout", defaultTimeout, "单次检查总预算")
 	fs.DurationVar(&opts.nodeTO, "node-timeout", defaultNodeTO, "单节点预算")
+	fs.IntVar(&opts.thresholds.replicaDelaySeconds, "replica-delay-seconds", 0, "replica_status 副本延迟阈值（秒），0 用库默认 300")
+	fs.IntVar(&opts.thresholds.parts, "parts-threshold", 0, "too_many_parts 单分区 part 数阈值，0 用库默认 1000")
+	fs.IntVar(&opts.thresholds.queueDepth, "queue-depth-threshold", 0, "queue_backlog 单表在队条目数阈值，0 用库默认 100")
+	fs.IntVar(&opts.thresholds.queueAgeSeconds, "queue-age-seconds", 0, "queue_backlog 最老条目年龄阈值（秒），0 用库默认 3600")
+	fs.IntVar(&opts.thresholds.queueRetries, "queue-retries-threshold", 0, "queue_backlog 最大重试次数阈值，0 用库默认 10")
+	fs.IntVar(&opts.thresholds.mutationAgeSeconds, "mutation-age-seconds", 0, "mutations_stuck 运行时长阈值（秒），0 用库默认 86400")
+	fs.IntVar(&opts.thresholds.diskFreePercent, "disk-free-percent", 0, "disk_space_low 剩余空间百分比阈值，0 用库默认 10")
+	fs.IntVar(&opts.thresholds.detachedCount, "detached-count-threshold", 0, "detached_parts 单表 part 数阈值，0 用库默认 10")
 	fs.BoolVar(&opts.jsonOutput, "json", false, "以 JSON 输出（稳定契约，供机器消费）")
 	fs.BoolVar(&opts.showVer, "version", false, "打印版本")
 	fs.BoolVar(&listChecks, "list-checks", false, "列出全部检查名后退出")
@@ -172,6 +218,9 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 	if opts.timeout < 0 || opts.nodeTO < 0 {
 		return exitUsage, fmt.Errorf("timeout 与 node-timeout 不能为负")
+	}
+	if err := validateThresholds(opts.thresholds); err != nil {
+		return exitUsage, err
 	}
 
 	specs, err := buildNodeSpecs(opts)
@@ -199,7 +248,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	started := time.Now()
 	results := make([]checkView, 0, len(names))
 	for _, name := range names {
-		v := runCheck(context.Background(), name, targets, opts.timeout, opts.nodeTO)
+		v := runCheck(context.Background(), name, targets, opts.timeout, opts.nodeTO, opts.thresholds)
 		results = append(results, v)
 	}
 	meta := runMeta{

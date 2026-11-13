@@ -278,3 +278,25 @@ func TestBuildNodeSpecsThreeParts(t *testing.T) {
 		t.Error("超过三段应报错")
 	}
 }
+
+func TestValidateThresholds(t *testing.T) {
+	// 全 0（全用库默认）合法
+	if err := validateThresholds(thresholds{}); err != nil {
+		t.Fatalf("全零阈值应合法: %v", err)
+	}
+	// 正值合法
+	if err := validateThresholds(thresholds{parts: 5, diskFreePercent: 20}); err != nil {
+		t.Fatalf("正值阈值应合法: %v", err)
+	}
+	// 任一负值必须拒绝
+	neg := []thresholds{
+		{replicaDelaySeconds: -1}, {parts: -1}, {queueDepth: -1},
+		{queueAgeSeconds: -1}, {queueRetries: -1}, {mutationAgeSeconds: -1},
+		{diskFreePercent: -1}, {detachedCount: -1},
+	}
+	for i, th := range neg {
+		if err := validateThresholds(th); err == nil {
+			t.Errorf("负值阈值 case %d 应拒绝: %+v", i, th)
+		}
+	}
+}
