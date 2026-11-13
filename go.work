@@ -1,8 +1,10 @@
-// 本地开发工作区：integration 独立模块通过 use 引用核心库，
-// 不把 clickhouse-go 引入核心依赖。发布时删除或保留均可（不影响 go.mod）。
+// 本地开发工作区：integration（真机测试）与 doctor（CLI 消费端）为独立模块，
+// 通过 use 引用核心库，不把 clickhouse-go 引入核心依赖。
+// 发布时删除或保留均可（不影响 go.mod）。
 go 1.24
 
 use (
 	.
 	./integration
+	./doctor
 )

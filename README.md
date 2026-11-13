@@ -1,6 +1,6 @@
 # clickhouse-go-diagnose
 
-独立的 ClickHouse 诊断库，基于既有诊断平台的诊断案例抽取固定查询、证据整理与判定能力，首个计划消费端为 ckman。
+独立 ClickHouse 诊断库，基于既有诊断平台的诊断案例抽取固定查询、证据整理与判定能力，首个计划消费端为 ckman；命令行消费端 `clickhouse-doctor` 已可用（见 [doctor/](doctor/README.md)）。
 
 许可：[Apache-2.0](LICENSE)
 
@@ -69,6 +69,11 @@ go vet ./...
 GOTMPDIR=~/go-tmp NO_PROXY=<集群 IP> \
   DIAGNOSE_IT_ADDR=<host>:9000 DIAGNOSE_IT_HTTP_ADDR=<host>:8123 \
   go test -count=1 -v ./integration
+
+# 命令行消费端（doctor/ 为独立模块，依赖 clickhouse-go，核心库保持仅标准库）
+cd doctor && go build -o clickhouse-doctor .
+./clickhouse-doctor --addr <host>:9000 --check all
+./clickhouse-doctor --addr <host>:9000 --json   # 机器可读输出；退出码 0/1/2/3 语义见 doctor/README.md
 
 # 在隔离集群注入一次真实 NO_REPLICA_HAS_PART（需 Keeper；用 --cleanup 复原）
 CH_ADDR=<host>:8123 CH_PASSWORD=... ZK_ADDR=<host>:9181 \

@@ -2,6 +2,12 @@
 
 格式参考 Keep a Changelog；版本遵循语义化版本。
 
+## [未发布]
+
+### 新增
+
+- `clickhouse-doctor` CLI（`doctor/` 独立 Go 模块）：命令行消费端，对指定节点运行 7 个检查并渲染报告。native 与 HTTP/database/sql 两条路径；`--json` 稳定输出契约（doctor 侧自有视图类型，核心库结构不变）；文本输出遵循结果契约纪律（partial/unknown 显式呈现、截断与节点失败可见、先证据后错误）。退出码：0 全部干净 / 1 调用连接错误 / 2 有匹配 / 3 覆盖不完整。真机验证：native 全检查（replica_status 命中真实 readonly 病变表，exit 2）、JSON、HTTP 路径与连接失败路径。
+
 ## [v0.2.0] - 2026-11-13
 
 v0.1.0 之后新增六个独立检查，并将首检查的采集调度泛化为通用框架（runner.go）。
