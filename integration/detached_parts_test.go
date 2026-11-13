@@ -21,7 +21,7 @@ const detachedDB = "__diagnose_it_detached"
 func setupDetachedFixture(t *testing.T, conn driver.Conn) (db, table, zkBase string) {
 	t.Helper()
 	ctx := context.Background()
-	uniq := time.Now().Unix()
+	uniq := time.Now().UnixNano()
 	db = detachedDB
 	table = fmt.Sprintf("dp_t_%d", uniq)
 	zkBase = fmt.Sprintf("/clickhouse/tables/diagnose-it/dp_it_%d", uniq)

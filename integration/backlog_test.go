@@ -22,7 +22,7 @@ const backlogDB = "__diagnose_it_qb"
 func backlogFixture(t *testing.T, conn driver.Conn) (db, table string) {
 	t.Helper()
 	ctx := context.Background()
-	uniq := time.Now().Unix()
+	uniq := time.Now().UnixNano()
 	db = backlogDB
 	table = fmt.Sprintf("backlog_it_%d", uniq)
 	zkBase := fmt.Sprintf("/clickhouse/tables/diagnose-it/qb_it_%d", uniq)

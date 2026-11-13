@@ -44,7 +44,7 @@ func fixtureTable(t *testing.T, conn driver.Conn) (db, table string, expectDefic
 		return replicaDB, ghostTable, true
 	}
 
-	replicaName := fmt.Sprintf("it-r1-%d", time.Now().Unix())
+	replicaName := fmt.Sprintf("it-r1-%d", time.Now().UnixNano())
 	mustExec(t, conn, ctx, "CREATE DATABASE IF NOT EXISTS "+replicaDB)
 	mustExec(t, conn, ctx, "DROP TABLE IF EXISTS "+replicaDB+"."+ownTable)
 	mustExec(t, conn, ctx,

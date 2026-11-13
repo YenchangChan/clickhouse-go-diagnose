@@ -252,11 +252,27 @@ func TestCheckCancelTinyBudget(t *testing.T) {
 		[]diagnose.Target{{NodeID: "node-big", ShardID: "s1", Querier: rewriteAdapter(conn)}},
 		diagnose.ReplicationQueueOptions{Timeout: 200 * time.Millisecond, NodeTimeout: 100 * time.Millisecond, MaxRowsPerNode: 60000})
 	if err == nil {
-		// 在预算内完成：必须完整且匹配。
-		if report.Execution != diagnose.ExecutionComplete || report.Outcome != diagnose.OutcomeMatched {
-			t.Errorf("提前完成但语义错误: %s/%s", report.Execution, report.Outcome)
+		// 契约允许两种 err==nil 的结果：
+		// 1) 总预算内完整扫完：complete/matched；
+		// 2) 节点级预算先耗尽但有效证据已保留、runner 在总预算内正常收尾：
+		//    partial/matched（"部分失败且有有效匹配"，错误只进节点 ErrCategory）。
+		if report.Execution == diagnose.ExecutionComplete && report.Outcome == diagnose.OutcomeMatched {
+			t.Logf("50000 行在 200ms 内完成（本地服务器性能足够）")
+			return
 		}
-		t.Logf("50000 行在 200ms 内完成（本地服务器性能足够）")
+		if report.Execution == diagnose.ExecutionPartial && report.Outcome == diagnose.OutcomeMatched {
+			for _, nr := range report.Targets {
+				switch nr.ErrCategory {
+				case diagnose.ErrCatTimeout, diagnose.ErrCatCanceled, diagnose.ErrCatQueryFailed, diagnose.ErrCatIterationFailed:
+					// 节点超时的允许分类。
+				default:
+					t.Errorf("partial 下出现异常分类 %q: %+v", nr.ErrCategory, nr)
+				}
+			}
+			t.Logf("节点预算内未扫完但证据保留: partial/matched, node_err=%s", report.Targets[0].ErrCategory)
+			return
+		}
+		t.Errorf("提前完成但语义错误: %s/%s", report.Execution, report.Outcome)
 		return
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {

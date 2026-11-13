@@ -2,7 +2,7 @@
 //
 // # 当前范围
 //
-// 当前实现六个检查，共用同一套采集调度（固定 worker 数、总/单节点预算、
+// 当前实现七个检查，共用同一套采集调度（固定 worker 数、总/单节点预算、
 // N+1 截断检测）与结果契约：
 //
 //   - [CheckReplicationQueueFailures]：识别复制队列（system.replication_queue）

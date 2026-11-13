@@ -97,6 +97,12 @@
 - **环境 flake（真机实测）**：该环境的 INSERT 偶发走 async insert 且 `Wait for async insert timeout (120000 ms) exceeded`——多个测试快速建表/插数/删表循环时后台异步插入池偶发饿死。fixture 的 INSERT 显式 `SETTINGS async_insert = 0, wait_for_async_insert = 0` 后连续 5 轮全量集成稳定通过。
 - `broken`/服务端自行下线的 part 未在用户库真机复现（system 库的 broken-on-start 残留被默认排除；用户表制造损坏 part 需写坏文件，不做）——两条逐 part 理由规则由单测覆盖判定链路，真机验证了空 reason 语义与数量规则。
 
+### 2026-11-13 · v0.2.0 收尾复核
+
+- **fixture 秒级时间戳撞车（真机实测）**：`count=3` 连跑时 native 与 HTTP 两个测试在同一秒内各自建 ReplicatedMergeTree fixture，zkBase/副本名由 `time.Now().Unix()` 生成而秒级撞车，`CREATE TABLE` 报 code 253 `REPLICA_ALREADY_EXISTS`（Keeper znode 由 DROP 异步收尾，加重复现概率）。detached_parts/backlog/replica_status 三处 fixture 统一改为 `UnixNano()`。
+- 全量复核：`gofmt`/`go vet`/`go test ./...`/`go test -race ./...`（核心库）与真机集成测试（native + HTTP）通过。
+- **`TestCheckCancelTinyBudget` 时序 flake（真机实测）**：50000 行 + 200ms 总预算 / 100ms 节点预算下，出现第三种契约内合法结果——节点级预算先耗尽、有效证据已保留、runner 在总预算内正常收尾，报告为 **partial/matched 且顶层 error 为 nil**（对应契约矩阵"部分失败且有有效匹配"行）。原测试只断言了 complete/matched 或 DeadlineExceeded 两个分支，已补上 partial/matched 分支（并校验节点 ErrCategory 属于超时允许分类）。教训：**小预算取消测试必须覆盖"节点超时 + 证据保留 + nil error"这一契约分支，机器负载波动会触发它**。
+
 
 **v2.15.0 驱动实测限制（对 ckman 接入重要）：**
 

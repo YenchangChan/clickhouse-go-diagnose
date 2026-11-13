@@ -199,7 +199,7 @@ ckman 适配器放在 ckman 侧，避免核心库引入 ckman。v0 不发布通�
 
 ### M5：交付收尾
 
-- [ ] 运行已完成阶段对应的必要测试，并记录实际命令与结果。
+- [x] 运行已完成阶段对应的必要测试，并记录实际命令与结果。（2026-11-13 v0.2.0 收尾复核：核心库 gofmt/vet/test/-race 全绿；真机集成测试 native+HTTP 通过，`-count=3` 连跑稳定；两处真机时序 flake 修复见 docs/compatibility.md）
 - [x] 补 README 使用示例、默认预算、结果语义与适配器约定。（README 使用示例；结果语义/预算/适配器约定在 doc.go godoc 中）
 - [ ] 以首个案例核对输出和人工确认结果，记录剩余局限。
 - [ ] 发布前确定版本号（module 路径已定为 `github.com/YenchangChan/clickhouse-go-diagnose`）；核心库不依赖 ckman、既有诊断平台或 LLM SDK。
