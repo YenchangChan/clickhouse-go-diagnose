@@ -46,6 +46,20 @@
 
 **已知匹配风险（未在 v0 处理）：** 匹配依赖异常文本中出现符号名 `NO_REPLICA_HAS_PART`。26.x 会带上该符号名，但更旧版本只打印自然语言（如 `No replica has part covering <part>`）。若目标版本省略符号名，当前规则会漏报 —— 接入新的服务器版本时必须重新验证这一条，不能假定匹配成立。
 
+### 2026-11-13 · ClickHouse 26.10.3.7 · 同集群 · `ReplicaStatus` 检查
+
+- 固定查询直接在真实 `system.replicas` 上执行：八个投影列（含 `is_readonly`/`is_session_expired`/`absolute_delay`/`total_replicas`/`active_replicas`/`lost_part_count`）在该版本全部存在，`toString` 字符串列扫描可用。
+- **真实 readonly 病变表**：集群上有一张 Keeper 路径失效的残留复制表（`is_readonly=1`、`total=0`、`active=0`、`absolute_delay≈1.79e9`），检查如实报出并给出 `replica_readonly` 理由码；`absolute_delay` 的天文数字证实了"长期无写入/无 Keeper 数据的表延迟值不可信"的告警，已写入 godoc 语义说明。
+- **真实 active 缺口**（`scripts/inject_ghost_replica.py`）：同一 Keeper 路径的手工 ghost znode 让 `total=2, active=1`，检查报出 `active_replica_deficit` 并给定位建议；`--cleanup` 后恢复健康分支（`no_match`），两种状态均已验证。
+- 注入期间的实测服务器行为（避免重复踩坑）：
+  1. 判定副本是否活跃看的是 **host 可达性/会话信息**，不是 znode 存在性：克隆真实副本的全部子节点（含 `is_active` 会话标记、指向本机真实 9009 端口的 host）会被判为 **active**，缺口不出现；ghost 只留 `host` 子节点且指向不可达地址（192.0.2.1）才稳定判为不活跃。
+  2. ghost 只需 `replicas/<name>/` + `host` 子节点即可计入 `total_replicas`。
+  3. `DROP TABLE` 对副本 znode 的清理是异步收尾的，紧接 CREATE 会撞 `REPLICA_ALREADY_EXISTS`（HTTP 400 与驱动报错都会出现）；集成测试用唯一副本名规避，注入脚本先递归清空 Keeper 路径再建表。
+  4. 测试进程被强杀时 Keeper 上会留下孤儿副本 znode（无表无会话），表现为该表 `total > active`——恰好是真实故障形态，集成测试按服务端事实分支断言两种状态。
+- 单副本表 `total=active=1` 不产生缺口类匹配，为诚实结果（godoc 已注明）。
+- HTTP/database/sql 路径同样验证通过。
+- Keeper 客户端端口（9181）的 HTTP 命令接口与四字命令在本环境均不可用（空响应/断连），Keeper 操作统一走 kazoo。
+
 
 **v2.15.0 驱动实测限制（对 ckman 接入重要）：**
 
@@ -67,3 +81,5 @@
 - [ ] HTTP 直连路径（v2.15 `Options.Protocol` 字段失效，见上）在 ckman 实际封装中的等价验证
 - [ ] 多分片／多服务器拓扑下的真实跨节点归并（本次为单机双副本）
 - [ ] `TooManyParts` 固定查询在更旧服务器版本的列集与 `SYSTEM STOP MERGES` 按表语法（26.10 已验证）
+- [ ] `ReplicaStatus` 的 readonly/session_expired 在**可操控 Keeper** 环境下的主动复现（停 Keeper/断会话；本次 readonly 证据来自真实病变残留表，active 缺口由 ghost znode 构造）
+- [ ] `ReplicaStatus` 固定查询在更旧服务器版本的 `system.replicas` 列集（26.10 已验证）

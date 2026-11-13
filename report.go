@@ -70,6 +70,28 @@ const (
 	AdviceReviewInsertBatchSize = "review_insert_batch_size"
 	// AdviceReviewPartitionKey 核对分区键粒度是否过细。
 	AdviceReviewPartitionKey = "review_partition_key"
+	// AdviceVerifyKeeperConnectivity 核对节点与 Keeper 的连通性与会话状态。
+	AdviceVerifyKeeperConnectivity = "verify_keeper_connectivity"
+	// AdviceLocateInactiveReplica 定位复制组中未激活的副本及其掉线原因。
+	AdviceLocateInactiveReplica = "locate_inactive_replica"
+	// AdviceInspectReplicaDelay 比较各副本延迟并确认落后是否扩大。
+	AdviceInspectReplicaDelay = "inspect_replica_delay"
+	// AdviceInvestigateLostParts 核对丢件副本的队列与数据完整性，评估恢复。
+	AdviceInvestigateLostParts = "investigate_lost_parts"
+)
+
+// 副本状态判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
+const (
+	// ReasonReplicaReadonly 副本处于只读状态（is_readonly 非 0）。
+	ReasonReplicaReadonly = "replica_readonly"
+	// ReasonSessionExpired 副本与 Keeper 的会话已过期（is_session_expired 非 0）。
+	ReasonSessionExpired = "session_expired"
+	// ReasonActiveReplicaDeficit 复制组存在未激活副本（active < total）。
+	ReasonActiveReplicaDeficit = "active_replica_deficit"
+	// ReasonReplicaDelayExceeded 副本延迟超过阈值（absolute_delay >= 阈值）。
+	ReasonReplicaDelayExceeded = "replica_delay_exceeded"
+	// ReasonLostParts 副本记录了永久性丢件（lost_part_count > 0）。
+	ReasonLostParts = "lost_parts"
 )
 
 var (
@@ -184,6 +206,52 @@ type TooManyPartsReport struct {
 
 	Targets   []NodeResult
 	Matches   []PartsMatch
+	NextSteps []FollowUp
+}
+
+// ReplicaObservation 是一条副本状态证据：哪个节点报告了该复制表的
+// 副本状态，以及该观测命中的稳定理由码（Reason* 常量）。
+type ReplicaObservation struct {
+	NodeID string
+
+	IsReadonly       bool
+	IsSessionExpired bool
+	AbsoluteDelay    int // 秒
+	TotalReplicas    int
+	ActiveReplicas   int
+	LostPartCount    int
+
+	Reasons []string
+}
+
+// ReplicaMatch 是按 (ShardID, Database, Table) 归并后的副本异常对象。
+// 同一分片的多个副本节点报告同一表时合并展示，但保留每个来源节点——
+// 不同副本对同一复制组的观测可能不同，这正是证据。
+// 匹配条数不等于故障副本数，也不构成修复指令。
+type ReplicaMatch struct {
+	ShardID      string
+	Database     string
+	Table        string
+	Observations []ReplicaObservation
+}
+
+// ReplicaStatusReport 是 ReplicaStatus 检查的结构化结果。
+//
+// 语义约定与 TooManyPartsReport 一致：Execution 与 Outcome 分离；
+// 匹配不等于集群不可用，no_match 不等于集群健康；时间戳是各节点
+// 各自的采集时刻；即使顶层返回 error，报告中已保留的有效证据仍然成立。
+type ReplicaStatusReport struct {
+	CheckID     string
+	RuleVersion string
+
+	StartedAt  time.Time
+	FinishedAt time.Time
+
+	Execution Execution
+	Outcome   Outcome
+
+	Targets   []NodeResult
+	Matches   []ReplicaMatch
 	NextSteps []FollowUp
 }
 
