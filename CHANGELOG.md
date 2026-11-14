@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+### 变更
+
+- **模块重命名**：消费端模块目录 `doctor/` → `clickhouse-doctor/`，module 路径 `github.com/YenchangChan/clickhouse-go-diagnose/doctor` → `.../clickhouse-doctor`（避免与 nova 自带的 `doctor` 安装自检包概念混淆）。建连与目标解析抽为 `clickhouse-doctor/targets` 包，供两个入口共用。
+
+### 新增
+
+- **`clickhouse-doctor-chat`（Agent 入口，可选）**：`clickhouse-doctor/chat/` 基于 nova v0.4.1 库嵌入形态，对话式诊断解释与按需触发检查。工具面只有 `list_checks`/`run_check` 两个只读工具（分别映射核心库 `ListChecks`/`RunCheck`），targets 会话级固定，Agent 结构上无法执行 SQL 或修复；每轮回复标注"AI 解释"，system prompt 禁止生成修复指令。LLM 为任意 OpenAI 兼容端点（`--base-url`/`--model` + `CLICKHOUSE_CHAT_API_KEY`）。分层断言：轻量 CLI 依赖闭包不含 nova（测试强制）；chat 亦不引入 nova 的 charm TUI（nova 核心本就无 UI 依赖）。引入 nova 后本模块构建要求 Go 1.26.6+。
+
 ### 新增
 
 - 统一检查入口（Agent-friendly，不引入任何 Agent 概念）：`ListChecks() []CheckMeta` 枚举全部检查（稳定 ID、描述、RuleVersion、阈值槽位声明 `ThresholdSpec`）；`RunCheck(ctx, id, targets, CheckOptions)` 按执行；`Report`/`ReportHeader` 是各检查报告的公共视图（Execution/Outcome/Targets/NextSteps），类型各异的 Matches 仍在具体报告类型上，类型断言取用。`CheckOptions.Thresholds` 按槽位序透传，缺省用库默认值；未知 ID/槽位溢出/负值统一报 `ErrInvalidInput` 且返回 nil 报告。判定严重级别/告警档位不属于库的职责——库只产出证据与稳定理由码，由消费端（LLM/人）基于证据判断。

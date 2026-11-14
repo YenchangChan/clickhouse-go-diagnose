@@ -1,8 +1,9 @@
-module github.com/YenchangChan/clickhouse-go-diagnose/doctor
+module github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor
 
-go 1.24
+go 1.26.6
 
 require (
+	github.com/AutumnsGrove/nova v0.4.1
 	github.com/ClickHouse/clickhouse-go/v2 v2.15.0
 	github.com/YenchangChan/clickhouse-go-diagnose v0.0.0
 )
@@ -21,7 +22,7 @@ require (
 	github.com/shopspring/decimal v1.3.1 // indirect
 	go.opentelemetry.io/otel v1.19.0 // indirect
 	go.opentelemetry.io/otel/trace v1.19.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

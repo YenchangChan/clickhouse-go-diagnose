@@ -4,7 +4,12 @@
 只做编排与渲染——判定逻辑全部在核心库，本工具不修复、不引入 LLM。
 
 独立 Go 模块（`replace` 指向核心库），`clickhouse-go` 依赖只出现在这里，
-核心库保持仅依赖标准库。
+核心库保持仅依赖标准库。本模块两个入口：
+
+- **`clickhouse-doctor`**（本目录，默认）：零 LLM 的轻量 CLI，运行即退出，
+  适合 CI、脚本、日常排障；
+- **`clickhouse-doctor-chat`**（[chat/](chat/)，可选）：Agent 入口，对话式
+  诊断解释与按需触发检查（见下文"Agent 入口"）。
 
 ## 使用
 
@@ -104,3 +109,40 @@ worker 数）。串行（默认）对慢集群更温和，也更容易区分"节
   同主机多实例用三段式显式区分。
 - 原始路线图中的 CPU / 慢查询 / 内存检查属核心库新检查（依赖
   `query_log`/`metric_log`），不在本 CLI 的范围内。
+
+## Agent 入口（clickhouse-doctor-chat，可选）
+
+`chat/` 子目录是独立 main 包，基于 [nova](https://github.com/AutumnsGrove/nova)
+（v0.4.1，锁定版本）的库嵌入形态。判定逻辑仍全部来自核心库，Agent 只消费
+报告与交互：
+
+- **工具面只有两个只读工具**：`list_checks`（核心库 `ListChecks()`）与
+  `run_check`（核心库 `RunCheck`，阈值按槽位 Key 覆盖）。未注册的工具模型
+  调不到，因此 Agent 结构上无法执行 SQL 或修复操作；
+- **targets 会话级固定**：连接参数只出现在启动 flag，工具参数不含地址；
+- **解释标注纪律**：每轮回复标注"AI 解释"，诊断结论以结构化报告为准；
+  system prompt 禁止生成修复 SQL/操作指令。
+
+```bash
+# 构建（nova 需要 Go 1.26.6+）
+cd clickhouse-doctor && go build -o clickhouse-doctor-chat ./chat
+
+# 运行（LLM 为任意 OpenAI 兼容端点）
+./clickhouse-doctor-chat \
+  --node shard-1@node-a:9000 --node shard-2@node-b:9000 \
+  --base-url https://llm.example.com/v1 --model <model> \
+  --api-key sk-...        # 或环境变量 CLICKHOUSE_CHAT_API_KEY
+```
+
+分层纪律（有测试断言 `TestLightCLIDepsExcludeNova`）：
+
+```bash
+# 轻量 CLI 的依赖闭包不含 nova（应为 0）
+go list -deps github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor | grep -c AutumnsGrove/nova
+# chat 只引入 nova 后端包，不含 charm TUI（应为 0）
+go list -deps github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/chat | grep -c 'charm.land'
+```
+
+注意：引入 nova 后本模块的构建要求提升为 Go 1.26.6+；轻量 CLI 自身不依赖
+nova，用旧版 Go 单独构建时可以恢复 `go.mod` 中 nova 之外的 go 指令。
+LLM 生成的任何内容仅供解释参考，运维操作务必以结构化报告与人工评估为准。

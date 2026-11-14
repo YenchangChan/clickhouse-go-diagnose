@@ -12,20 +12,16 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2" // native 驱动（含 database/sql 注册）
-	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-
 	diagnose "github.com/YenchangChan/clickhouse-go-diagnose"
+	"github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/targets"
 )
 
 const (
@@ -51,7 +47,7 @@ type options struct {
 	password   string
 	nodeID     string
 	shardID    string
-	nodes      nodeFlags
+	nodes      targets.FlagList
 	checks     string
 	timeout    time.Duration
 	nodeTO     time.Duration
@@ -99,76 +95,24 @@ func validateThresholds(t thresholds) error {
 	return nil
 }
 
-// nodeFlags 支持重复传参：--node shard-1@host:9000 --node shard-2@host:9000。
-// 地址写 http:// 前缀则该节点走 HTTP/database/sql 路径，混合协议按节点生效。
-type nodeFlags []string
-
-func (n *nodeFlags) String() string { return strings.Join(*n, ",") }
-
-func (n *nodeFlags) Set(s string) error {
-	if s == "" {
-		return fmt.Errorf("--node 不能为空")
-	}
-	*n = append(*n, s)
-	return nil
-}
-
-// nodeSpec 是一个目标的完整身份：分片、节点标识与连接地址。
-type nodeSpec struct {
-	shardID string
-	nodeID  string
-	addr    string // 原样保留；http:// 前缀表示 HTTP/database/sql 路径
-}
-
-func isHTTPAddr(addr string) bool { return strings.HasPrefix(addr, "http://") }
-
-// buildNodeSpecs 解析多节点参数。优先 --node 重复传参；未提供时退回
-// 单节点兼容形式（--addr / --http + --node-id / --shard-id）。
-// NodeID 默认取地址本身；重复 NodeID 在此拒绝，而不是让库报 ErrInvalidInput。
-func buildNodeSpecs(o options) ([]nodeSpec, error) {
-	var specs []nodeSpec
+// buildNodeSpecs 解析多节点参数。优先 --node 重复传参（targets.FromNodes）；
+// 未提供时退回单节点兼容形式（--addr / --http + --node-id / --shard-id）。
+func buildNodeSpecs(o options) ([]targets.Spec, error) {
 	if len(o.nodes) > 0 {
-		for _, raw := range o.nodes {
-			shard, nodeID := o.shardID, ""
-			addr := raw
-			parts := strings.SplitN(raw, "@", 3)
-			switch len(parts) {
-			case 2: // shard-id@addr
-				shard, addr = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-			case 3: // shard-id@node-id@addr（同一主机多实例必须显式区分 node-id）
-				shard, nodeID, addr = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2])
-			}
-			if shard == "" || addr == "" || (len(parts) == 3 && nodeID == "") || strings.Contains(addr, "@") {
-				return nil, fmt.Errorf("--node %q 格式错误：应为 shard-id@addr 或 shard-id@node-id@addr", raw)
-			}
-			if nodeID == "" {
-				nodeID = addr
-			}
-			specs = append(specs, nodeSpec{shardID: shard, nodeID: nodeID, addr: addr})
-		}
-	} else {
-		addr := o.addr
-		if addr == "" && o.httpAddr != "" {
-			addr = "http://" + o.httpAddr
-		}
-		if addr == "" {
-			return nil, fmt.Errorf("必须提供 --node 或 --addr / --http")
-		}
-		nodeID := addr
-		if o.nodeID != "" {
-			nodeID = o.nodeID
-		}
-		specs = []nodeSpec{{shardID: o.shardID, nodeID: nodeID, addr: addr}}
+		return targets.FromNodes(o.nodes, o.shardID)
 	}
-
-	seen := map[string]string{}
-	for _, s := range specs {
-		if prev, dup := seen[s.nodeID]; dup {
-			return nil, fmt.Errorf("节点标识 %q 重复（出现在 %s 与 %s）；同一主机的多个实例必须用不同标识", s.nodeID, prev, s.addr)
-		}
-		seen[s.nodeID] = s.addr
+	addr := o.addr
+	if addr == "" && o.httpAddr != "" {
+		addr = "http://" + o.httpAddr
 	}
-	return specs, nil
+	if addr == "" {
+		return nil, fmt.Errorf("必须提供 --node 或 --addr / --http")
+	}
+	nodeID := addr
+	if o.nodeID != "" {
+		nodeID = o.nodeID
+	}
+	return []targets.Spec{{ShardID: o.shardID, NodeID: nodeID, Addr: addr}}, nil
 }
 
 func main() {
@@ -239,7 +183,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitUsage, err
 	}
 
-	targets, closers, err := openTargets(specs, opts.user, opts.password)
+	targets, closers, err := targets.Open(specs, opts.user, opts.password)
 	if err != nil {
 		for _, c := range closers {
 			c()
@@ -291,10 +235,10 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	return exitCode(results), nil
 }
 
-func protocolName(specs []nodeSpec) string {
+func protocolName(specs []targets.Spec) string {
 	hasNative, hasHTTP := false, false
 	for _, s := range specs {
-		if isHTTPAddr(s.addr) {
+		if targets.IsHTTP(s.Addr) {
 			hasHTTP = true
 		} else {
 			hasNative = true
@@ -310,75 +254,16 @@ func protocolName(specs []nodeSpec) string {
 	}
 }
 
-func targetSummaries(specs []nodeSpec) []targetSummary {
+func targetSummaries(specs []targets.Spec) []targetSummary {
 	out := make([]targetSummary, 0, len(specs))
 	for _, s := range specs {
 		proto := "native"
-		if isHTTPAddr(s.addr) {
+		if targets.IsHTTP(s.Addr) {
 			proto = "http/database-sql"
 		}
-		out = append(out, targetSummary{NodeID: s.nodeID, ShardID: s.shardID, Addr: s.addr, Protocol: proto})
+		out = append(out, targetSummary{NodeID: s.NodeID, ShardID: s.ShardID, Addr: s.Addr, Protocol: proto})
 	}
 	return out
-}
-
-// openTargets 逐个建连并组装 diagnose.Target。任一节点连接失败立即返回错误
-// （已打开的连接由调用方关闭）；建连与 Ping 不计入检查预算，单节点上限 5s。
-func openTargets(specs []nodeSpec, user, password string) ([]diagnose.Target, []func(), error) {
-	var (
-		targets []diagnose.Target
-		closers []func()
-	)
-	for _, s := range specs {
-		q, closeFn, err := openQuerier(s.addr, user, password)
-		if err != nil {
-			return nil, closers, fmt.Errorf("连接 %s (%s): %w", s.nodeID, s.shardID, err)
-		}
-		closers = append(closers, closeFn)
-		targets = append(targets, diagnose.Target{NodeID: s.nodeID, ShardID: s.shardID, Querier: q})
-	}
-	return targets, closers, nil
-}
-
-// openQuerier 按地址建连。http:// 前缀走 database/sql（HTTP DSN），否则 native。
-func openQuerier(addr, user, password string) (diagnose.Querier, func(), error) {
-	if isHTTPAddr(addr) {
-		host := strings.TrimPrefix(addr, "http://")
-		u := url.URL{
-			Scheme: "http",
-			User:   url.UserPassword(user, password),
-			Host:   host,
-			Path:   "default",
-		}
-		db, err := sql.Open("clickhouse", u.String())
-		if err != nil {
-			return nil, nil, err
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := db.PingContext(ctx); err != nil {
-			_ = db.Close()
-			return nil, nil, err
-		}
-		return &sqlQuerier{db: db}, func() { _ = db.Close() }, nil
-	}
-
-	opt := &clickhouse.Options{
-		Addr:        []string{addr},
-		Auth:        clickhouse.Auth{Database: "default", Username: user, Password: password},
-		DialTimeout: 5 * time.Second,
-	}
-	conn, err := clickhouse.Open(opt)
-	if err != nil {
-		return nil, nil, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := conn.Ping(ctx); err != nil {
-		_ = conn.Close()
-		return nil, nil, err
-	}
-	return &nativeQuerier{conn: conn}, func() { _ = conn.Close() }, nil
 }
 
 // 检查名清单。名称稳定，供 --check 与 JSON 输出的 check 字段使用。
@@ -446,30 +331,4 @@ func parseChecks(spec string) ([]string, error) {
 		return nil, fmt.Errorf("--check 未解析出任何检查名")
 	}
 	return names, nil
-}
-
-// nativeQuerier 把 clickhouse-go native 连接适配为 diagnose.Querier。
-type nativeQuerier struct{ conn driver.Conn }
-
-func (n *nativeQuerier) Query(ctx context.Context, query string, args ...any) (diagnose.Rows, error) {
-	rows, err := n.conn.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	return driverRows{rows}, nil
-}
-
-// driverRows 直接内嵌 driver.Rows：Next/Scan/Err/Close 签名一致。
-type driverRows struct{ driver.Rows }
-
-// sqlQuerier 走 database/sql（含 HTTP DSN）。sql.Rows 的 Next/Scan/Err/Close
-// 与 diagnose.Rows 签名一致，可直接返回。
-type sqlQuerier struct{ db *sql.DB }
-
-func (s *sqlQuerier) Query(ctx context.Context, query string, args ...any) (diagnose.Rows, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
 }

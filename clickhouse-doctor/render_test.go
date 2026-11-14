@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/targets"
 )
 
 func TestParseChecks(t *testing.T) {
@@ -204,7 +206,7 @@ func TestClip(t *testing.T) {
 func TestBuildNodeSpecs(t *testing.T) {
 	// 多节点：shard 前缀 + 无前缀（用默认分片）+ HTTP 地址
 	specs, err := buildNodeSpecs(options{
-		nodes:   nodeFlags{"shard-1@host-a:9000", "host-b:9000", "shard-2@http://host-c:8123"},
+		nodes:   targets.FlagList{"shard-1@host-a:9000", "host-b:9000", "shard-2@http://host-c:8123"},
 		shardID: "shard-1",
 	})
 	if err != nil {
@@ -213,13 +215,13 @@ func TestBuildNodeSpecs(t *testing.T) {
 	if len(specs) != 3 {
 		t.Fatalf("应有 3 个节点，got %d", len(specs))
 	}
-	if specs[0].shardID != "shard-1" || specs[0].nodeID != "host-a:9000" {
+	if specs[0].ShardID != "shard-1" || specs[0].NodeID != "host-a:9000" {
 		t.Errorf("specs[0] 错误: %+v", specs[0])
 	}
-	if specs[1].shardID != "shard-1" || specs[1].nodeID != "host-b:9000" {
+	if specs[1].ShardID != "shard-1" || specs[1].NodeID != "host-b:9000" {
 		t.Errorf("specs[1] 应使用默认分片: %+v", specs[1])
 	}
-	if !isHTTPAddr(specs[2].addr) {
+	if !targets.IsHTTP(specs[2].Addr) {
 		t.Errorf("specs[2] 应识别为 HTTP: %+v", specs[2])
 	}
 
@@ -228,7 +230,7 @@ func TestBuildNodeSpecs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("单节点兼容: %v", err)
 	}
-	if len(specs) != 1 || specs[0].nodeID != "node-a" || specs[0].shardID != "shard-9" {
+	if len(specs) != 1 || specs[0].NodeID != "node-a" || specs[0].ShardID != "shard-9" {
 		t.Fatalf("单节点兼容错误: %+v", specs)
 	}
 
@@ -237,7 +239,7 @@ func TestBuildNodeSpecs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--http 兼容: %v", err)
 	}
-	if !isHTTPAddr(specs[0].addr) {
+	if !targets.IsHTTP(specs[0].Addr) {
 		t.Errorf("--http 应产生 http:// 前缀地址: %+v", specs[0])
 	}
 
@@ -248,33 +250,33 @@ func TestBuildNodeSpecs(t *testing.T) {
 
 	// 重复 NodeID：必须报错
 	if _, err := buildNodeSpecs(options{
-		nodes: nodeFlags{"shard-1@host-a:9000", "shard-2@host-a:9000"},
+		nodes: targets.FlagList{"shard-1@host-a:9000", "shard-2@host-a:9000"},
 	}); err == nil {
 		t.Error("重复 node-id 应报错")
 	}
 
 	// 残缺 shard 前缀：必须报错
-	if _, err := buildNodeSpecs(options{nodes: nodeFlags{"@host-a:9000"}}); err == nil {
+	if _, err := buildNodeSpecs(options{nodes: targets.FlagList{"@host-a:9000"}}); err == nil {
 		t.Error("空 shard 前缀应报错")
 	}
 }
 
 func TestBuildNodeSpecsThreeParts(t *testing.T) {
 	specs, err := buildNodeSpecs(options{
-		nodes:   nodeFlags{"shard-1@r1@192.168.56.101:9000", "shard-2@r2@192.168.56.101:9000"},
+		nodes:   targets.FlagList{"shard-1@r1@192.168.56.101:9000", "shard-2@r2@192.168.56.101:9000"},
 		shardID: "shard-1",
 	})
 	if err != nil {
 		t.Fatalf("三段式解析: %v", err)
 	}
-	if specs[0].nodeID != "r1" || specs[1].nodeID != "r2" {
+	if specs[0].NodeID != "r1" || specs[1].NodeID != "r2" {
 		t.Errorf("三段式 node-id 错误: %+v", specs)
 	}
-	if specs[0].addr != "192.168.56.101:9000" {
+	if specs[0].Addr != "192.168.56.101:9000" {
 		t.Errorf("三段式 addr 错误: %+v", specs[0])
 	}
 	// 四段（地址含 @ 之类）应报错
-	if _, err := buildNodeSpecs(options{nodes: nodeFlags{"a@b@c@d"}}); err == nil {
+	if _, err := buildNodeSpecs(options{nodes: targets.FlagList{"a@b@c@d"}}); err == nil {
 		t.Error("超过三段应报错")
 	}
 }
