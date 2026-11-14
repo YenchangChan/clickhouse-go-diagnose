@@ -9,30 +9,30 @@ import (
 // ThresholdSpec 声明检查的一个判定阈值槽位。Key 是稳定名，供消费端
 // （CLI flag、配置、Agent 工具参数）按名映射；Default 是库默认值。
 type ThresholdSpec struct {
-	Key         string
-	Default     int
-	Description string
+	Key         string `json:"key"`
+	Default     int    `json:"default"`
+	Description string `json:"description"`
 }
 
 // CheckMeta 描述一个可枚举的检查：稳定 ID、人类可读描述、当前规则版本
 // 与阈值槽位清单。ID 与 RuleVersion 是机器消费的稳定契约。
 type CheckMeta struct {
-	ID          string
-	Description string
-	RuleVersion string
-	Thresholds  []ThresholdSpec
+	ID          string          `json:"id"`
+	Description string          `json:"description"`
+	RuleVersion string          `json:"rule_version"`
+	Thresholds  []ThresholdSpec `json:"thresholds"`
 }
 
 // CheckOptions 是 RunCheck 的执行预算与判定阈值。预算字段零值语义与
 // 各 CheckXxx Options 一致（0 取默认，负值报错）；Thresholds 按
 // CheckMeta.Thresholds 的槽位顺序提供，缺省槽位或槽位值为 0 时用库默认值。
 type CheckOptions struct {
-	Timeout        time.Duration
-	NodeTimeout    time.Duration
-	Concurrency    int
-	MaxRowsPerNode int
+	Timeout        time.Duration `json:"timeout"`
+	NodeTimeout    time.Duration `json:"node_timeout"`
+	Concurrency    int           `json:"concurrency"`
+	MaxRowsPerNode int           `json:"max_rows_per_node"`
 
-	Thresholds []int
+	Thresholds []int `json:"thresholds"`
 }
 
 // ReportHeader 是各检查报告的公共视图：执行完整性、匹配结果、逐节点
@@ -41,13 +41,13 @@ type CheckOptions struct {
 type ReportHeader struct {
 	CheckMeta
 
-	StartedAt  time.Time
-	FinishedAt time.Time
-	Execution  Execution
-	Outcome    Outcome
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
+	Execution  Execution `json:"execution"`
+	Outcome    Outcome   `json:"outcome"`
 
-	Targets   []NodeResult
-	NextSteps []FollowUp
+	Targets   []NodeResult `json:"targets"`
+	NextSteps []FollowUp   `json:"next_steps"`
 }
 
 // Report 是各检查结构化报告的公共接口。库只产出证据与稳定理由码，

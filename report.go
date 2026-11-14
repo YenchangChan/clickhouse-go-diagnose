@@ -166,25 +166,25 @@ var (
 
 // NodeResult 是单个目标节点的采集结果与覆盖信息。
 type NodeResult struct {
-	NodeID  string
-	ShardID string
-	Status  NodeStatus
+	NodeID  string     `json:"node_id"`
+	ShardID string     `json:"shard_id"`
+	Status  NodeStatus `json:"status"`
 
-	RowsRead  int  // 本节点实际读取的行数（含未匹配行）
-	RowsKept  int  // 匹配且保留的异常行数
-	Truncated bool // 达到保留上限后停止读取；本节点清单不完整
+	RowsRead  int  // 本节点实际读取的行数（含未匹配行） `json:"rows_read"`
+	RowsKept  int  // 匹配且保留的异常行数 `json:"rows_kept"`
+	Truncated bool // 达到保留上限后停止读取；本节点清单不完整 `json:"truncated"`
 
-	ErrCategory string // Status 为 failed 或 not_started 时非空
-	ErrMessage  string // 可能包含服务端异常文本，UI 必须按文本转义展示
+	ErrCategory string // Status 为 failed 或 not_started 时非空 `json:"err_category"`
+	ErrMessage  string // 可能包含服务端异常文本，UI 必须按文本转义展示 `json:"err_message"`
 
-	StartedAt  time.Time // 未启动时为零值
-	FinishedAt time.Time // 未启动时为零值
+	StartedAt  time.Time // 未启动时为零值 `json:"started_at"`
+	FinishedAt time.Time // 未启动时为零值 `json:"finished_at"`
 }
 
 // QueueObservation 是一条匹配证据：哪个节点的队列记录了该异常。
 type QueueObservation struct {
-	NodeID        string
-	LastException string // 原始异常文本，可能包含敏感信息
+	NodeID        string `json:"node_id"`
+	LastException string // 原始异常文本，可能包含敏感信息 `json:"last_exception"`
 }
 
 // QueueMatch 是按 (ShardID, Database, Table, PartName) 归并后的异常对象。
@@ -192,18 +192,18 @@ type QueueObservation struct {
 // 不同分片绝不因同名表或同名 part 合并。
 // 匹配条数不是队列任务数，也不代表需要修复的次数。
 type QueueMatch struct {
-	ShardID      string
-	Database     string
-	Table        string
-	PartName     string
-	Observations []QueueObservation
+	ShardID      string             `json:"shard_id"`
+	Database     string             `json:"database"`
+	Table        string             `json:"table"`
+	PartName     string             `json:"part_name"`
+	Observations []QueueObservation `json:"observations"`
 }
 
 // FollowUp 是一条后续核查建议。建议只引导人工核查，不构成修复方案；
 // 库不自动执行任何修复操作。
 type FollowUp struct {
-	Code   string
-	Detail string
+	Code   string `json:"code"`
+	Detail string `json:"detail"`
 }
 
 // ReplicationQueueReport 是检查的结构化结果。
@@ -215,37 +215,37 @@ type FollowUp struct {
 //   - 即使顶层返回 error（取消、超时、ErrNoUsableObservation），报告中已保留的
 //     有效证据仍然成立，消费端应先处理报告再处理错误。
 type ReplicationQueueReport struct {
-	CheckID     string
-	RuleVersion string
+	CheckID     string `json:"check_id"`
+	RuleVersion string `json:"rule_version"`
 
-	StartedAt  time.Time
-	FinishedAt time.Time
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
 
-	Execution Execution
-	Outcome   Outcome
+	Execution Execution `json:"execution"`
+	Outcome   Outcome   `json:"outcome"`
 
-	Targets   []NodeResult
-	Matches   []QueueMatch
-	NextSteps []FollowUp
+	Targets   []NodeResult `json:"targets"`
+	Matches   []QueueMatch `json:"matches"`
+	NextSteps []FollowUp   `json:"next_steps"`
 }
 
 // PartsObservation 是一条分区统计证据：哪个节点报告了该分区的 part 数。
 type PartsObservation struct {
-	NodeID    string
-	Parts     int    // 该节点上该分区的活跃 part 数
-	DiskBytes string // 磁盘占用，服务端 toString 后的十进制字符串
+	NodeID    string `json:"node_id"`
+	Parts     int    // 该节点上该分区的活跃 part 数 `json:"parts"`
+	DiskBytes string // 磁盘占用，服务端 toString 后的十进制字符串 `json:"disk_bytes"`
 }
 
 // PartsMatch 是按 (ShardID, Database, Table, Partition) 归并后的分区统计。
 // 同一分区多个节点报告时保留每个来源节点；Parts 取各节点中的最大值。
 // 超过阈值说明该分区在对应节点上存在写入碎片化风险，不构成修复指令。
 type PartsMatch struct {
-	ShardID      string
-	Database     string
-	Table        string
-	Partition    string
-	Parts        int // 观测中的最大 part 数
-	Observations []PartsObservation
+	ShardID      string             `json:"shard_id"`
+	Database     string             `json:"database"`
+	Table        string             `json:"table"`
+	Partition    string             `json:"partition"`
+	Parts        int                // 观测中的最大 part 数 `json:"parts"`
+	Observations []PartsObservation `json:"observations"`
 }
 
 // TooManyPartsReport 是 TooManyParts 检查的结构化结果。
@@ -254,33 +254,33 @@ type PartsMatch struct {
 // 超阈值不等于需要立即修复，no_match 不等于集群健康；时间戳是各节点
 // 各自的采集时刻；即使顶层返回 error，报告中已保留的有效证据仍然成立。
 type TooManyPartsReport struct {
-	CheckID     string
-	RuleVersion string
+	CheckID     string `json:"check_id"`
+	RuleVersion string `json:"rule_version"`
 
-	StartedAt  time.Time
-	FinishedAt time.Time
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
 
-	Execution Execution
-	Outcome   Outcome
+	Execution Execution `json:"execution"`
+	Outcome   Outcome   `json:"outcome"`
 
-	Targets   []NodeResult
-	Matches   []PartsMatch
-	NextSteps []FollowUp
+	Targets   []NodeResult `json:"targets"`
+	Matches   []PartsMatch `json:"matches"`
+	NextSteps []FollowUp   `json:"next_steps"`
 }
 
 // ReplicaObservation 是一条副本状态证据：哪个节点报告了该复制表的
 // 副本状态，以及该观测命中的稳定理由码（Reason* 常量）。
 type ReplicaObservation struct {
-	NodeID string
+	NodeID string `json:"node_id"`
 
-	IsReadonly       bool
-	IsSessionExpired bool
-	AbsoluteDelay    int // 秒
-	TotalReplicas    int
-	ActiveReplicas   int
-	LostPartCount    int
+	IsReadonly       bool `json:"is_readonly"`
+	IsSessionExpired bool `json:"is_session_expired"`
+	AbsoluteDelay    int  // 秒 `json:"absolute_delay"`
+	TotalReplicas    int  `json:"total_replicas"`
+	ActiveReplicas   int  `json:"active_replicas"`
+	LostPartCount    int  `json:"lost_part_count"`
 
-	Reasons []string
+	Reasons []string `json:"reasons"`
 }
 
 // ReplicaMatch 是按 (ShardID, Database, Table) 归并后的副本异常对象。
@@ -288,10 +288,10 @@ type ReplicaObservation struct {
 // 不同副本对同一复制组的观测可能不同，这正是证据。
 // 匹配条数不等于故障副本数，也不构成修复指令。
 type ReplicaMatch struct {
-	ShardID      string
-	Database     string
-	Table        string
-	Observations []ReplicaObservation
+	ShardID      string               `json:"shard_id"`
+	Database     string               `json:"database"`
+	Table        string               `json:"table"`
+	Observations []ReplicaObservation `json:"observations"`
 }
 
 // ReplicaStatusReport 是 ReplicaStatus 检查的结构化结果。
@@ -300,33 +300,33 @@ type ReplicaMatch struct {
 // 匹配不等于集群不可用，no_match 不等于集群健康；时间戳是各节点
 // 各自的采集时刻；即使顶层返回 error，报告中已保留的有效证据仍然成立。
 type ReplicaStatusReport struct {
-	CheckID     string
-	RuleVersion string
+	CheckID     string `json:"check_id"`
+	RuleVersion string `json:"rule_version"`
 
-	StartedAt  time.Time
-	FinishedAt time.Time
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
 
-	Execution Execution
-	Outcome   Outcome
+	Execution Execution `json:"execution"`
+	Outcome   Outcome   `json:"outcome"`
 
-	Targets   []NodeResult
-	Matches   []ReplicaMatch
-	NextSteps []FollowUp
+	Targets   []NodeResult   `json:"targets"`
+	Matches   []ReplicaMatch `json:"matches"`
+	NextSteps []FollowUp     `json:"next_steps"`
 }
 
 // MutationObservation 是一条 mutation 证据：哪个节点的 system.mutations
 // 记录了该未完成条目，以及该观测命中的稳定理由码（ReasonMutation* 常量）。
 type MutationObservation struct {
-	NodeID string
+	NodeID string `json:"node_id"`
 
-	Command    string // 原始 mutation 命令，可能包含敏感字面量，UI 必须按文本转义展示
-	AgeSeconds int    // 服务端 dateDiff 计算的未完成时长（秒）
+	Command    string // 原始 mutation 命令，可能包含敏感字面量，UI 必须按文本转义展示 `json:"command"`
+	AgeSeconds int    // 服务端 dateDiff 计算的未完成时长（秒） `json:"age_seconds"`
 
 	// LatestFailReason 是原始失败文本（空表示从未失败），可能包含敏感
 	// 信息与完整堆栈。
-	LatestFailReason string
+	LatestFailReason string `json:"latest_fail_reason"`
 
-	Reasons []string
+	Reasons []string `json:"reasons"`
 }
 
 // MutationMatch 是按 (ShardID, Database, Table, MutationID) 归并后的
@@ -334,11 +334,11 @@ type MutationObservation struct {
 // 但保留每个来源节点——各副本的重试状态可能不同。匹配条数不是失败
 // 次数，也不构成修复指令。
 type MutationMatch struct {
-	ShardID      string
-	Database     string
-	Table        string
-	MutationID   string
-	Observations []MutationObservation
+	ShardID      string                `json:"shard_id"`
+	Database     string                `json:"database"`
+	Table        string                `json:"table"`
+	MutationID   string                `json:"mutation_id"`
+	Observations []MutationObservation `json:"observations"`
 }
 
 // MutationsStuckReport 是 MutationsStuck 检查的结构化结果。
@@ -348,31 +348,31 @@ type MutationMatch struct {
 // 集群健康（已完成范围只覆盖未完成条目）；时间戳是各节点各自的采集时刻；
 // 即使顶层返回 error，报告中已保留的有效证据仍然成立。
 type MutationsStuckReport struct {
-	CheckID     string
-	RuleVersion string
+	CheckID     string `json:"check_id"`
+	RuleVersion string `json:"rule_version"`
 
-	StartedAt  time.Time
-	FinishedAt time.Time
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
 
-	Execution Execution
-	Outcome   Outcome
+	Execution Execution `json:"execution"`
+	Outcome   Outcome   `json:"outcome"`
 
-	Targets   []NodeResult
-	Matches   []MutationMatch
-	NextSteps []FollowUp
+	Targets   []NodeResult    `json:"targets"`
+	Matches   []MutationMatch `json:"matches"`
+	NextSteps []FollowUp      `json:"next_steps"`
 }
 
 // QueueBacklogObservation 是一条队列积压证据：哪个节点的复制队列记录了
 // 该表的积压聚合特征，以及该观测命中的稳定理由码（ReasonQueue* 常量）。
 type QueueBacklogObservation struct {
-	NodeID string
+	NodeID string `json:"node_id"`
 
-	Depth            int // 该节点上该表的在队条目数
-	OldestAgeSeconds int // 服务端 dateDiff 计算的最老条目年龄（秒）
-	MaxRetries       int // 在队条目中的最大重试次数
-	FailingEntries   int // 在队条目中带异常文本的数量（背景证据，非判定规则）
+	Depth            int // 该节点上该表的在队条目数 `json:"depth"`
+	OldestAgeSeconds int // 服务端 dateDiff 计算的最老条目年龄（秒） `json:"oldest_age_seconds"`
+	MaxRetries       int // 在队条目中的最大重试次数 `json:"max_retries"`
+	FailingEntries   int // 在队条目中带异常文本的数量（背景证据，非判定规则） `json:"failing_entries"`
 
-	Reasons []string
+	Reasons []string `json:"reasons"`
 }
 
 // QueueBacklogMatch 是按 (ShardID, Database, Table) 归并后的队列积压对象。
@@ -380,14 +380,14 @@ type QueueBacklogObservation struct {
 // Depth/OldestAgeSeconds/MaxRetries 取各节点观测中的最大值——任一副本
 // 积压本身就构成证据。匹配条数不是队列任务总数，也不构成修复指令。
 type QueueBacklogMatch struct {
-	ShardID          string
-	Database         string
-	Table            string
-	Depth            int // 观测中的最大在队条目数
-	OldestAgeSeconds int // 观测中的最大最老条目年龄
-	MaxRetries       int // 观测中的最大重试次数
+	ShardID          string `json:"shard_id"`
+	Database         string `json:"database"`
+	Table            string `json:"table"`
+	Depth            int    // 观测中的最大在队条目数 `json:"depth"`
+	OldestAgeSeconds int    // 观测中的最大最老条目年龄 `json:"oldest_age_seconds"`
+	MaxRetries       int    // 观测中的最大重试次数 `json:"max_retries"`
 
-	Observations []QueueBacklogObservation
+	Observations []QueueBacklogObservation `json:"observations"`
 }
 
 // QueueBacklogReport 是 ReplicationQueueBacklog 检查的结构化结果。
@@ -397,30 +397,30 @@ type QueueBacklogMatch struct {
 // 集群健康（在途正常条目造成的瞬时深度不触发判定）；时间戳是各节点
 // 各自的采集时刻；即使顶层返回 error，报告中已保留的有效证据仍然成立。
 type QueueBacklogReport struct {
-	CheckID     string
-	RuleVersion string
+	CheckID     string `json:"check_id"`
+	RuleVersion string `json:"rule_version"`
 
-	StartedAt  time.Time
-	FinishedAt time.Time
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
 
-	Execution Execution
-	Outcome   Outcome
+	Execution Execution `json:"execution"`
+	Outcome   Outcome   `json:"outcome"`
 
-	Targets   []NodeResult
-	Matches   []QueueBacklogMatch
-	NextSteps []FollowUp
+	Targets   []NodeResult        `json:"targets"`
+	Matches   []QueueBacklogMatch `json:"matches"`
+	NextSteps []FollowUp          `json:"next_steps"`
 }
 
 // DiskObservation 是一条磁盘水位证据：哪个节点的哪块磁盘报告了容量水位，
 // 以及该观测命中的稳定理由码（ReasonDisk* 常量）。
 type DiskObservation struct {
-	NodeID        string
-	FreeBytes     uint64
-	TotalBytes    uint64
-	KeepFreeBytes uint64
-	FreePercent   int // 0-100；total_space=0 时为 -1（不可计算）
+	NodeID        string `json:"node_id"`
+	FreeBytes     uint64 `json:"free_bytes"`
+	TotalBytes    uint64 `json:"total_bytes"`
+	KeepFreeBytes uint64 `json:"keep_free_bytes"`
+	FreePercent   int    // 0-100；total_space=0 时为 -1（不可计算） `json:"free_percent"`
 
-	Reasons []string
+	Reasons []string `json:"reasons"`
 }
 
 // DiskSpaceMatch 是按 (ShardID, DiskName, Path) 归并后的磁盘水位对象。
@@ -428,12 +428,12 @@ type DiskObservation struct {
 // FreePercent 取观测中的最小值（最差水位），不做跨节点平均。
 // 匹配说明容量水位值得人工核查，不等于服务已不可用。
 type DiskSpaceMatch struct {
-	ShardID     string
-	DiskName    string
-	Path        string
-	FreePercent int // 观测中最差（最小）水位；全部不可计算时为 -1
+	ShardID     string `json:"shard_id"`
+	DiskName    string `json:"disk_name"`
+	Path        string `json:"path"`
+	FreePercent int    // 观测中最差（最小）水位；全部不可计算时为 -1 `json:"free_percent"`
 
-	Observations []DiskObservation
+	Observations []DiskObservation `json:"observations"`
 }
 
 // DiskSpaceReport 是 DiskSpaceLow 检查的结构化结果。
@@ -443,31 +443,31 @@ type DiskSpaceMatch struct {
 // （只覆盖被检查节点上的本地磁盘视图）；时间戳是各节点各自的采集时刻；
 // 即使顶层返回 error，报告中已保留的有效证据仍然成立。
 type DiskSpaceReport struct {
-	CheckID     string
-	RuleVersion string
+	CheckID     string `json:"check_id"`
+	RuleVersion string `json:"rule_version"`
 
-	StartedAt  time.Time
-	FinishedAt time.Time
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
 
-	Execution Execution
-	Outcome   Outcome
+	Execution Execution `json:"execution"`
+	Outcome   Outcome   `json:"outcome"`
 
-	Targets   []NodeResult
-	Matches   []DiskSpaceMatch
-	NextSteps []FollowUp
+	Targets   []NodeResult     `json:"targets"`
+	Matches   []DiskSpaceMatch `json:"matches"`
+	NextSteps []FollowUp       `json:"next_steps"`
 }
 
 // DetachedObservation 是一条 detached part 证据：哪个节点的哪张表下存在
 // 该 detached part，以及该观测命中的稳定理由码（ReasonDetached* 常量）。
 // 空 Reasons 表示用户通过 ALTER 手工 detach（reason 为空），本身不构成异常。
 type DetachedObservation struct {
-	NodeID      string
-	PartName    string
-	Reason      string // 服务端 reason 原始值；空表示用户手工 detach
-	Disk        string
-	BytesOnDisk uint64
+	NodeID      string `json:"node_id"`
+	PartName    string `json:"part_name"`
+	Reason      string // 服务端 reason 原始值；空表示用户手工 detach `json:"reason"`
+	Disk        string `json:"disk"`
+	BytesOnDisk uint64 `json:"bytes_on_disk"`
 
-	Reasons []string
+	Reasons []string `json:"reasons"`
 }
 
 // DetachedMatch 是按 (ShardID, Database, Table) 归并后的 detached part 集合。
@@ -476,16 +476,16 @@ type DetachedObservation struct {
 // Reasons 是匹配级理由（如 ReasonDetachedCountExceeded），与逐 part 的
 // Reasons 区分。匹配条数不等于故障数，也不构成修复指令。
 type DetachedMatch struct {
-	ShardID  string
-	Database string
-	Table    string
+	ShardID  string `json:"shard_id"`
+	Database string `json:"database"`
+	Table    string `json:"table"`
 
-	Parts int // 观测中的最大单节点 detached 总数
+	Parts int // 观测中的最大单节点 detached 总数 `json:"parts"`
 
 	// Reasons 是匹配级判定理由（ReasonDetachedCountExceeded）。
-	Reasons []string
+	Reasons []string `json:"reasons"`
 
-	Observations []DetachedObservation
+	Observations []DetachedObservation `json:"observations"`
 }
 
 // DetachedPartsReport 是 DetachedParts 检查的结构化结果。
@@ -495,18 +495,18 @@ type DetachedMatch struct {
 // no_match 不等于集群健康（只覆盖被检查节点的本地视图）；时间戳是各
 // 节点各自的采集时刻；即使顶层返回 error，报告中已保留的有效证据仍然成立。
 type DetachedPartsReport struct {
-	CheckID     string
-	RuleVersion string
+	CheckID     string `json:"check_id"`
+	RuleVersion string `json:"rule_version"`
 
-	StartedAt  time.Time
-	FinishedAt time.Time
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
 
-	Execution Execution
-	Outcome   Outcome
+	Execution Execution `json:"execution"`
+	Outcome   Outcome   `json:"outcome"`
 
-	Targets   []NodeResult
-	Matches   []DetachedMatch
-	NextSteps []FollowUp
+	Targets   []NodeResult    `json:"targets"`
+	Matches   []DetachedMatch `json:"matches"`
+	NextSteps []FollowUp      `json:"next_steps"`
 }
 
 func inputError(format string, args ...any) error {
