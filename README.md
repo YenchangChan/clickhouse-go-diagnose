@@ -127,7 +127,7 @@ rep, err := diagnose.RunCheck(ctx, "replica_status", targets, diagnose.CheckOpti
 go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor@latest
 
 # chat 入口（可选；内含 nova 与 markdown 渲染依赖）
-go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/chat@latest
+go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/clickhouse-doctor-chat@latest
 ```
 
 > `clickhouse-doctor` 是仓库内的嵌套独立模块，其版本 tag 带子目录前缀（`clickhouse-doctor/vX.Y.Z`）；`@latest` 解析该前缀的最新 tag。

@@ -8,7 +8,7 @@
 
 - **`clickhouse-doctor`**（本目录，默认）：零 LLM 的轻量 CLI，运行即退出，
   适合 CI、脚本、日常排障；
-- **`clickhouse-doctor-chat`**（[chat/](chat/)，可选）：Agent 入口，对话式
+- **`clickhouse-doctor-chat`**（[clickhouse-doctor-chat/](clickhouse-doctor-chat/)，可选）：Agent 入口，对话式
   诊断解释与按需触发检查（见下文"Agent 入口"；完整自测流程见
   [TESTING.md](TESTING.md)）。
 
@@ -21,7 +21,7 @@
 go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor@latest
 
 # chat 入口（可选；内含 nova 与 markdown 渲染依赖）
-go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/chat@latest
+go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/clickhouse-doctor-chat@latest
 ```
 
 本目录是仓库内的嵌套独立模块，版本 tag 带子目录前缀（`clickhouse-doctor/vX.Y.Z`），`@latest` 解析该前缀的最新 tag。本地开发时核心库由仓库根的 `go.work`（`use .`）解析到工作区；`go install` 安装发布版本时使用 require 声明的核心库版本。`go.mod` 不含 `replace` 指令——`go install module@version` 禁止目标模块带 `replace`。
@@ -32,7 +32,7 @@ go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/chat
 # 仓库根执行，产物在 clickhouse-doctor/bin/
 make build
 # 或
-cd clickhouse-doctor && go build -o bin/clickhouse-doctor . && go build -o bin/clickhouse-doctor-chat ./chat
+cd clickhouse-doctor && go build -o bin/clickhouse-doctor . && go build -o bin/clickhouse-doctor-chat ./clickhouse-doctor-chat
 ```
 
 ## 使用
@@ -149,7 +149,7 @@ worker 数）。串行（默认）对慢集群更温和，也更容易区分"节
 
 ```bash
 # 构建（nova 需要 Go 1.26.6+）
-cd clickhouse-doctor && go build -o clickhouse-doctor-chat ./chat
+cd clickhouse-doctor && go build -o clickhouse-doctor-chat ./clickhouse-doctor-chat
 
 # 运行（LLM 为任意 OpenAI 兼容端点）
 ./clickhouse-doctor-chat \
@@ -164,7 +164,7 @@ cd clickhouse-doctor && go build -o clickhouse-doctor-chat ./chat
 # 轻量 CLI 的依赖闭包不含 nova（应为 0）
 go list -deps github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor | grep -c AutumnsGrove/nova
 # chat 只引入 nova 后端包，不含 charm TUI（应为 0）
-go list -deps github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/chat | grep -c 'charm.land'
+go list -deps github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/clickhouse-doctor-chat | grep -c 'charm.land'
 ```
 
 注意：引入 nova 后本模块的构建要求提升为 Go 1.26.6+；轻量 CLI 自身不依赖

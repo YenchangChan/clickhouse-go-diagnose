@@ -16,8 +16,8 @@ build: $(DOCTOR) $(DOCTOR_CHAT) ## 构建两个入口
 $(DOCTOR): $(wildcard $(DOCTOR_DIR)/*.go) $(DOCTOR_DIR)/go.mod
 	go build -o $@ ./$(DOCTOR_DIR)
 
-$(DOCTOR_CHAT): $(wildcard $(DOCTOR_DIR)/chat/*.go) $(DOCTOR_DIR)/targets/*.go $(DOCTOR_DIR)/go.mod
-	go build -o $@ ./$(DOCTOR_DIR)/chat
+$(DOCTOR_CHAT): $(wildcard $(DOCTOR_DIR)/clickhouse-doctor-chat/*.go) $(DOCTOR_DIR)/targets/*.go $(DOCTOR_DIR)/go.mod
+	go build -o $@ ./$(DOCTOR_DIR)/clickhouse-doctor-chat
 
 test: ## 全部模块单元测试（不含真机 integration，需显式启用）
 	go test -count=1 ./...
@@ -40,7 +40,7 @@ assert-deps: ## 分层断言：轻量 CLI 不含 nova；chat 不含 bubbletea �
 	if [ "$$n" -ne 0 ]; then \
 		echo "轻量 CLI 依赖闭包混入 nova（$$n 处）"; exit 1; \
 	fi; \
-	m=$$(go list -deps $(DOCTOR_MODULE)/chat | grep -cE 'charm.land/(bubbletea|bubbles|fang)'); \
+	m=$$(go list -deps $(DOCTOR_MODULE)/clickhouse-doctor-chat | grep -cE 'charm.land/(bubbletea|bubbles|fang)'); \
 	if [ "$$m" -ne 0 ]; then \
 		echo "chat 依赖闭包混入全屏 TUI 框架（$$m 处）"; exit 1; \
 	fi; \

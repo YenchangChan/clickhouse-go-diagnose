@@ -21,12 +21,11 @@ import (
 	"time"
 
 	diagnose "github.com/YenchangChan/clickhouse-go-diagnose"
+	"github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/internal/buildinfo"
 	"github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/targets"
 )
 
 const (
-	version        = "0.1.0"
-	coreVersion    = "v0.2.0"
 	defaultTimeout = 10 * time.Second
 	defaultNodeTO  = 2 * time.Second
 )
@@ -158,7 +157,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitOK, nil
 	}
 	if opts.showVer {
-		fmt.Fprintf(stdout, "clickhouse-doctor %s (clickhouse-go-diagnose %s)\n", version, coreVersion)
+		fmt.Fprintf(stdout, "clickhouse-doctor %s (clickhouse-go-diagnose %s)\n", buildinfo.Version(), buildinfo.CoreVersion())
 		return exitOK, nil
 	}
 	if opts.password == "" {
@@ -217,7 +216,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 	}
 	meta := runMeta{
-		Version:    version,
+		Version:    buildinfo.Version(),
 		Protocol:   protocolName(specs),
 		Targets:    targetSummaries(specs),
 		StartedAt:  started,

@@ -22,13 +22,11 @@ import (
 	"github.com/AutumnsGrove/nova/provider/openaicompat"
 
 	diagnose "github.com/YenchangChan/clickhouse-go-diagnose"
+	"github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/internal/buildinfo"
 	"github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/targets"
 )
 
 const (
-	version     = "0.1.0"
-	coreVersion = "v0.2.0"
-
 	defaultMaxTurns   = 12
 	defaultLLMTimeout = 120 * time.Second
 )
@@ -81,7 +79,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitUsage, err
 	}
 	if opts.showVer {
-		fmt.Fprintf(stdout, "clickhouse-doctor-chat %s (clickhouse-go-diagnose %s)\n", version, coreVersion)
+		fmt.Fprintf(stdout, "clickhouse-doctor-chat %s (clickhouse-go-diagnose %s)\n", buildinfo.Version(), buildinfo.CoreVersion())
 		return exitOK, nil
 	}
 	if opts.password == "" {
@@ -137,7 +135,7 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		targetSummary = strings.Join(addrs, ", ")
 	}
-	fmt.Fprintln(stderr, banner(version, opts.model, targetSummary, tty))
+	fmt.Fprintln(stderr, banner(buildinfo.Version(), opts.model, targetSummary, tty))
 
 	// 上下文压缩器：上限取端点实际限制（硅基流动 163840），留 24K 余量。
 	compactor := &compaction.Compactor{

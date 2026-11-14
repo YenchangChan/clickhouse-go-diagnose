@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/internal/buildinfo"
 	"github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/targets"
 )
 
@@ -74,7 +75,7 @@ func TestRenderJSON(t *testing.T) {
 		}},
 		NextSteps: []followUpView{{Code: "locate_inactive_replica", Detail: "定位未激活副本"}},
 	}}
-	meta := runMeta{Version: version, Protocol: "native", Targets: []targetSummary{
+	meta := runMeta{Version: buildinfo.Version(), Protocol: "native", Targets: []targetSummary{
 		{NodeID: "node-a", ShardID: "s1", Addr: "host-a:9000", Protocol: "native"},
 	},
 		StartedAt: time.Unix(1700000000, 0), FinishedAt: time.Unix(1700000001, 0)}
@@ -118,7 +119,7 @@ func TestRenderJSON(t *testing.T) {
 }
 
 func TestRenderTextMatchedAndPartial(t *testing.T) {
-	meta := runMeta{Version: version, Protocol: "native", Targets: []targetSummary{
+	meta := runMeta{Version: buildinfo.Version(), Protocol: "native", Targets: []targetSummary{
 		{NodeID: "node-a", ShardID: "s1", Addr: "host-a:9000", Protocol: "native"},
 	},
 		StartedAt: time.Unix(1700000000, 0), FinishedAt: time.Unix(1700000001, 0)}
@@ -174,7 +175,7 @@ func TestRenderTextMatchedAndPartial(t *testing.T) {
 }
 
 func TestRenderTextNoMatchNote(t *testing.T) {
-	meta := runMeta{Version: version, Protocol: "native", Targets: []targetSummary{
+	meta := runMeta{Version: buildinfo.Version(), Protocol: "native", Targets: []targetSummary{
 		{NodeID: "node-a", ShardID: "shard-1", Addr: "host-a:9000", Protocol: "native"},
 	}}
 	var buf bytes.Buffer
