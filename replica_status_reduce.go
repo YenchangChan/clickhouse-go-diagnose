@@ -89,11 +89,17 @@ func buildReplicaFollowUps(exe Execution, results []NodeResult, matches []Replic
 	}
 	var steps []FollowUp
 	// 按固定顺序输出，保证同输入下建议列表稳定。
+	// 多个理由映射同一建议代码时（如 keeper_unreachable/readonly/expired 都
+	// 指向 verify_keeper_connectivity）只保留最先命中的一条，建议按 code 去重。
+	seen := map[string]bool{}
 	add := func(reason, code, detail string) {
-		if hits[reason] {
+		if hits[reason] && !seen[code] {
+			seen[code] = true
 			steps = append(steps, FollowUp{Code: code, Detail: detail})
 		}
 	}
+	add(ReasonKeeperUnreachable, AdviceVerifyKeeperConnectivity,
+		"节点读不到 Keeper 上的副本清单（total_replicas=0）；先核对 Keeper 服务与网络连通性，恢复后逐表状态会自动刷新，无需逐表处置")
 	add(ReasonReplicaReadonly, AdviceVerifyKeeperConnectivity,
 		"副本只读通常源于 Keeper 连接或会话异常；在匹配节点上核对与 Keeper 的连通性与会话状态")
 	add(ReasonSessionExpired, AdviceVerifyKeeperConnectivity,

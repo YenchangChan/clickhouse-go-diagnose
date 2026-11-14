@@ -10,7 +10,7 @@ import (
 
 const (
 	replicaStatusCheckID     = "replica_status"
-	replicaStatusRuleVersion = "1"
+	replicaStatusRuleVersion = "2"
 	// defaultDelayThreshold 副本 absolute_delay 的判定阈值（秒）。
 	// 取常规监控的告警档位：超过 5 分钟的持续落后通常意味着拉取/合并
 	// 吞吐不足或副本半死；短时抖动由复跑确认，不在此猜规则。
@@ -34,6 +34,8 @@ type ReplicaStatusOptions struct {
 
 // CheckReplicaStatus 检查指定节点上复制表的副本状态，判定规则：
 //
+//   - total_replicas = 0（节点读不到 Keeper 上的副本清单；物理不可能值，
+//     Keeper 恢复后逐表理由可能全部消失，本理由是环境级证据）；
 //   - is_readonly 非 0（副本只读，通常源于 Keeper 连接/会话异常）；
 //   - is_session_expired 非 0（会话过期）；
 //   - active_replicas < total_replicas（复制组存在未激活副本）；
@@ -110,8 +112,11 @@ func CheckReplicaStatus(
 				}
 			}
 
-			// 判定在客户端完成：五条规则按声明顺序生成理由码。
+			// 判定在客户端完成：规则按声明顺序生成理由码。
 			var reasons []string
+			if tot == 0 {
+				reasons = append(reasons, ReasonKeeperUnreachable)
+			}
 			if ro != 0 {
 				reasons = append(reasons, ReasonReplicaReadonly)
 			}

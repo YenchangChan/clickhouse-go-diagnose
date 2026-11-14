@@ -30,6 +30,10 @@ clickhouse-doctor --addr 127.0.0.1:9000 --check replica_status,disk_space_low --
 # 自定义阈值（0 表示用库默认值）
 clickhouse-doctor --addr 127.0.0.1:9000 --parts-threshold 500 --disk-free-percent 20
 
+# 慢集群（弱磁盘虚拟机等）：放宽单节点预算与保留上限
+clickhouse-doctor --node shard-1@node-a:9000 --node shard-1@node-b:9000 \
+  --timeout 120s --node-timeout 60s --max-rows-per-node 5000
+
 # 查看检查清单 / 版本
 clickhouse-doctor --list-checks
 clickhouse-doctor --version
@@ -56,6 +60,25 @@ clickhouse-doctor --version
 | `--detached-count-threshold` | detached_parts：单表 detached part 数 | 10 |
 
 阈值只影响判定，不影响采集：证据行始终完整收集，理由码由核心库生成。
+
+## 预算与编排
+
+| flag | 默认 | 说明 |
+|---|---|---|
+| `--timeout` | 10s | 单次检查总预算 |
+| `--node-timeout` | 2s | 单节点查询与读取预算 |
+| `--max-rows-per-node` | 库默认 1000 | 单节点保留条目上限（读 N+1 条即截断） |
+| `--parallel-checks` | 关 | 并发运行多个检查，输出顺序不变 |
+
+慢集群（弱磁盘虚拟机、高负载节点）实测参考：`system.detached_parts` 单表
+`count()` 可达分钟级，`system.replicas` 在 Keeper 会话丢失窗口内会长时间
+无响应——默认 2s 单节点预算必然超时（表现为全部节点 `timeout`，
+Execution=failed/unknown）。此类集群建议 `--node-timeout 60s --timeout 120s`；
+detached part 海量（数千以上）时配合 `--max-rows-per-node` 调大，避免截断。
+
+`--parallel-checks` 把多个检查并发打向同一批节点（总并发 ≈ 检查数 × 单检查
+worker 数）。串行（默认）对慢集群更温和，也更容易区分"节点慢"与"节点挂"；
+快集群想缩短整体耗时再开。
 
 ## 输出语义（遵循核心库契约）
 

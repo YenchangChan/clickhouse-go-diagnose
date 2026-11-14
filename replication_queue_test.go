@@ -102,7 +102,7 @@ func TestCheckCompleteNoMatch(t *testing.T) {
 	if len(report.NextSteps) != 0 {
 		t.Errorf("complete + no_match 不应有建议: %+v", report.NextSteps)
 	}
-	if report.CheckID != checkID || report.RuleVersion != ruleVersion {
+	if report.CheckID != replicationQueueCheckID || report.RuleVersion != replicationQueueRuleVersion {
 		t.Errorf("检查身份错误: %s/%s", report.CheckID, report.RuleVersion)
 	}
 }

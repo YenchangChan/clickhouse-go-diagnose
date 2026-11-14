@@ -19,10 +19,10 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
-	_ "github.com/ClickHouse/clickhouse-go/v2" // database/sql 驱动注册
+	"github.com/ClickHouse/clickhouse-go/v2" // native 驱动（含 database/sql 注册）
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
 	diagnose "github.com/YenchangChan/clickhouse-go-diagnose"
@@ -55,6 +55,8 @@ type options struct {
 	checks     string
 	timeout    time.Duration
 	nodeTO     time.Duration
+	maxRows    int
+	parallel   bool
 	thresholds thresholds
 	jsonOutput bool
 	showVer    bool
@@ -189,7 +191,9 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	fs.Var(&opts.nodes, "node", "目标节点，可重复：--node shard-1@host:9000 或 shard-1@node-别名@host:9000（同主机多实例）；地址写 http://host:8123 则走 HTTP 路径")
 	fs.StringVar(&opts.checks, "check", "all", "检查项：all 或逗号分隔的名称（见 --list-checks）")
 	fs.DurationVar(&opts.timeout, "timeout", defaultTimeout, "单次检查总预算")
-	fs.DurationVar(&opts.nodeTO, "node-timeout", defaultNodeTO, "单节点预算")
+	fs.DurationVar(&opts.nodeTO, "node-timeout", defaultNodeTO, "单节点预算；慢集群（弱磁盘虚拟机等）system.replicas / system.detached_parts 常需 60s 以上")
+	fs.IntVar(&opts.maxRows, "max-rows-per-node", 0, "单节点保留条目上限（读 N+1 条即截断），0 用库默认 1000；detached_parts 等海量场景需调大")
+	fs.BoolVar(&opts.parallel, "parallel-checks", false, "并发运行多个检查（默认串行，对慢集群更温和；开启后单检查的 worker 会叠加，注意服务端压力）")
 	fs.IntVar(&opts.thresholds.replicaDelaySeconds, "replica-delay-seconds", 0, "replica_status 副本延迟阈值（秒），0 用库默认 300")
 	fs.IntVar(&opts.thresholds.parts, "parts-threshold", 0, "too_many_parts 单分区 part 数阈值，0 用库默认 1000")
 	fs.IntVar(&opts.thresholds.queueDepth, "queue-depth-threshold", 0, "queue_backlog 单表在队条目数阈值，0 用库默认 100")
@@ -219,6 +223,9 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	if opts.timeout < 0 || opts.nodeTO < 0 {
 		return exitUsage, fmt.Errorf("timeout 与 node-timeout 不能为负")
 	}
+	if opts.maxRows < 0 {
+		return exitUsage, fmt.Errorf("max-rows-per-node 不能为负")
+	}
 	if err := validateThresholds(opts.thresholds); err != nil {
 		return exitUsage, err
 	}
@@ -246,10 +253,24 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 	}()
 
 	started := time.Now()
-	results := make([]checkView, 0, len(names))
-	for _, name := range names {
-		v := runCheck(context.Background(), name, targets, opts.timeout, opts.nodeTO, opts.thresholds)
-		results = append(results, v)
+	results := make([]checkView, len(names))
+	if opts.parallel && len(names) > 1 {
+		// 并发跑检查，结果按 index 写回槽位，输出顺序与串行一致。
+		// targets 的底层连接（database/sql 池、clickhouse-go 连接池）
+		// 支持并发查询；并发度 = 检查数 × 单检查 worker 数，慢集群慎用。
+		var wg sync.WaitGroup
+		for i, name := range names {
+			wg.Add(1)
+			go func(i int, name string) {
+				defer wg.Done()
+				results[i] = runCheck(context.Background(), name, targets, opts.timeout, opts.nodeTO, opts.thresholds, opts.maxRows)
+			}(i, name)
+		}
+		wg.Wait()
+	} else {
+		for i, name := range names {
+			results[i] = runCheck(context.Background(), name, targets, opts.timeout, opts.nodeTO, opts.thresholds, opts.maxRows)
+		}
 	}
 	meta := runMeta{
 		Version:    version,

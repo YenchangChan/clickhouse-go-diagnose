@@ -6,6 +6,14 @@
 
 ### 新增
 
+- `replica_status` 新增判定规则与理由码 `keeper_unreachable`（`total_replicas=0`，物理不可能值，标识节点读不到 Keeper 副本清单；2026-11-14 真实集群 Keeper 会话丢失窗口实测发现，见 docs/compatibility.md）。RuleVersion `1` → `2`。
+- `clickhouse-doctor` 预算与编排 flag：`--max-rows-per-node`（单节点保留上限，默认库默认 1000；detached part 海量场景需调大避免截断）、`--parallel-checks`（默认关闭；串行对慢集群更温和）。doctor/README.md 新增"预算与编排"一节与慢集群实测参考值（弱磁盘虚拟机上默认 2s 单节点预算必然超时，建议 `--node-timeout 60s`）。
+
+### 变更
+
+- RuleVersion 格式统一为 `"1"`/`"2"` 整数递增：`replication_queue_failures` 的 `"v0.1"` 改为 `"1"`，常量重命名为 `replicationQueueCheckID`/`replicationQueueRuleVersion`（与其他检查命名一致）。机器消费方若按字符串解析版本号需同步。
+- doctor 移除 `clickhouse-go` 的重复 import（普通导入一行同时完成驱动注册）。
+
 - `clickhouse-doctor` CLI（`doctor/` 独立 Go 模块）：命令行消费端，对指定节点运行 7 个检查并渲染报告。native 与 HTTP/database/sql 两条路径（可按节点混合）；`--node` 可重复传参（`shard-id@addr` / `shard-id@node-id@addr`，跨分片不归并）；`--json` 稳定输出契约（doctor 侧自有视图类型，核心库结构不变）；文本输出遵循结果契约纪律（partial/unknown 显式呈现、截断与节点失败可见、先证据后错误）。退出码：0 全部干净 / 1 调用连接错误 / 2 有匹配 / 3 覆盖不完整。真机验证：单节点全检查（replica_status 命中真实 readonly 病变表，exit 2）、同机双副本双目标（跨分片各一条匹配）、混合协议、JSON、连接失败路径。
 - `clickhouse-doctor` 检查阈值 flag：8 个可选阈值（`--parts-threshold`、`--replica-delay-seconds`、`--queue-depth-threshold`、`--queue-age-seconds`、`--queue-retries-threshold`、`--mutation-age-seconds`、`--disk-free-percent`、`--detached-count-threshold`），0 用库默认值、负数解析层拒绝。真机验证：3-part 夹具下低阈值 matched / 默认阈值 no_match / 负值拒绝。
 

@@ -81,8 +81,8 @@ func CheckReplicationQueueFailures(
 	exe := summarizeExecution(results)
 	outcome := summarizeOutcome(exe, matches)
 	report := ReplicationQueueReport{
-		CheckID:     checkID,
-		RuleVersion: ruleVersion,
+		CheckID:     replicationQueueCheckID,
+		RuleVersion: replicationQueueRuleVersion,
 		StartedAt:   start,
 		FinishedAt:  time.Now(),
 		Execution:   exe,

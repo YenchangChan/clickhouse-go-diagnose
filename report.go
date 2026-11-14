@@ -98,6 +98,11 @@ const (
 	ReasonReplicaReadonly = "replica_readonly"
 	// ReasonSessionExpired 副本与 Keeper 的会话已过期（is_session_expired 非 0）。
 	ReasonSessionExpired = "session_expired"
+	// ReasonKeeperUnreachable 节点读不到 Keeper 上的副本清单
+	//（total_replicas = 0，物理不可能值：复制组至少含自身一个副本）。
+	// 真机实测（26.3.13.31，Keeper 会话丢失窗口）：此时 expired/readonly
+	// 大面积同时命中，本理由标识环境级根因，优先于逐表理由核查。
+	ReasonKeeperUnreachable = "keeper_unreachable"
 	// ReasonActiveReplicaDeficit 复制组存在未激活副本（active < total）。
 	ReasonActiveReplicaDeficit = "active_replica_deficit"
 	// ReasonReplicaDelayExceeded 副本延迟超过阈值（absolute_delay >= 阈值）。

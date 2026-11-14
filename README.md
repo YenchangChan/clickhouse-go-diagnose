@@ -14,7 +14,7 @@
 
 ## v0 范围
 
-七个独立检查，各自返回结构化报告：复制队列的 `NO_REPLICA_HAS_PART` 异常（`CheckReplicationQueueFailures`）、单分区活跃 part 数超阈值（`CheckTooManyParts`）、副本状态异常（`CheckReplicaStatus`：只读、会话过期、active 副本缺口、延迟超阈值、丢件记录）、卡住的 mutation（`CheckMutationsStuck`：失败重试、未完成超龄）、队列积压（`CheckReplicationQueueBacklog`：在队条目数、最老条目年龄、重试次数超阈值）、磁盘水位（`CheckDiskSpaceLow`：剩余占比阈值、keep_free_space 保留量击穿）与 detached part（`CheckDetachedParts`：损坏、服务端自行下线、单表数量超阈值）。所有检查保留节点来源和检查完整性。匹配/超阈值**不等于**确认故障起因或需要修复；无匹配**不等于**集群健康。不自动修复，不依赖 LLM。
+七个独立检查，各自返回结构化报告：复制队列的 `NO_REPLICA_HAS_PART` 异常（`CheckReplicationQueueFailures`）、单分区活跃 part 数超阈值（`CheckTooManyParts`）、副本状态异常（`CheckReplicaStatus`：Keeper 不可达、只读、会话过期、active 副本缺口、延迟超阈值、丢件记录）、卡住的 mutation（`CheckMutationsStuck`：失败重试、未完成超龄）、队列积压（`CheckReplicationQueueBacklog`：在队条目数、最老条目年龄、重试次数超阈值）、磁盘水位（`CheckDiskSpaceLow`：剩余占比阈值、keep_free_space 保留量击穿）与 detached part（`CheckDetachedParts`：损坏、服务端自行下线、单表数量超阈值）。所有检查保留节点来源和检查完整性。匹配/超阈值**不等于**确认故障起因或需要修复；无匹配**不等于**集群健康。不自动修复，不依赖 LLM。
 
 ## 使用
 

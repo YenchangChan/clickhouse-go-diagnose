@@ -4,8 +4,8 @@ import "strings"
 
 // 检查身份。
 const (
-	checkID     = "replication_queue_failures"
-	ruleVersion = "v0.1"
+	replicationQueueCheckID     = "replication_queue_failures"
+	replicationQueueRuleVersion = "1"
 )
 
 // exceptionMarker 是本检查识别的异常特征。异常文本可能携带完整堆栈等上下文，

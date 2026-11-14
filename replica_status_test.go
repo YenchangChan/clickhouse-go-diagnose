@@ -339,6 +339,48 @@ func TestReplicaFixedQueryContract(t *testing.T) {
 	}
 }
 
+func TestReplicaKeeperUnreachableMatched(t *testing.T) {
+	// total_replicas=0 是物理不可能值：复制组至少含自身一个副本。
+	// 该形态只在节点读不到 Keeper 上的副本清单时出现，是环境级信号，
+	// 独立成理由，不依赖 readonly/session_expired 同时命中。
+	tgt, _ := replicaTarget("n1", "s1", [][]any{
+		replicaRow("db1", "t1", "0", "0", "0", "0", "0", "0"),
+	})
+	report, err := CheckReplicaStatus(context.Background(), []Target{tgt}, ReplicaStatusOptions{})
+	if err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if report.Outcome != OutcomeMatched {
+		t.Fatalf("got %s, want matched", report.Outcome)
+	}
+	o := report.Matches[0].Observations[0]
+	if len(o.Reasons) != 1 || o.Reasons[0] != ReasonKeeperUnreachable {
+		t.Errorf("理由码错误: %+v", o.Reasons)
+	}
+	if !hasAdviceCode(report.NextSteps, AdviceVerifyKeeperConnectivity) {
+		t.Errorf("Keeper 不可达应给 Keeper 连通性建议: %+v", report.NextSteps)
+	}
+}
+
+func TestReplicaKeeperUnreachableCoexistsWithOtherReasons(t *testing.T) {
+	// Keeper 丢失窗口的真实形态（26.3.13.31 真机）：expired=1、total=0、
+	// readonly 大面积出现；各理由码独立并列，不互斥。
+	tgt, _ := replicaTarget("n1", "s1", [][]any{
+		replicaRow("db1", "t1", "1", "1", "0", "0", "0", "0"),
+	})
+	report, _ := CheckReplicaStatus(context.Background(), []Target{tgt}, ReplicaStatusOptions{})
+	o := report.Matches[0].Observations[0]
+	want := []string{ReasonKeeperUnreachable, ReasonReplicaReadonly, ReasonSessionExpired}
+	if len(o.Reasons) != len(want) {
+		t.Fatalf("reasons = %v, want %v", o.Reasons, want)
+	}
+	for i := range want {
+		if o.Reasons[i] != want[i] {
+			t.Errorf("reasons[%d] = %s, want %s", i, o.Reasons[i], want[i])
+		}
+	}
+}
+
 func TestReplicaMatchOrdering(t *testing.T) {
 	// 不同表按字典序；同表不同库按库字典序。
 	a, _ := replicaTarget("n1", "s1", [][]any{

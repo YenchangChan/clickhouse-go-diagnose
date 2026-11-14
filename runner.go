@@ -87,7 +87,7 @@ func validateTargets(targets []Target) error {
 // collect 对全部目标并发采集，返回各节点结果、全部保留观测，以及总预算
 // 状态：非 nil 表示取消或总预算耗尽（context.DeadlineExceeded / Canceled）。
 //
-// 调度语义（两个检查共用）：
+// 调度语义（全部检查共用）：
 //   - 全部目标先记为 not_started，被调度并产出结果的槽位被覆盖；
 //   - 固定 worker 数，按 targets 顺序派发，总预算耗尽后停止派发；
 //   - 单节点读取到第 maxRows+1 条保留观测即停止并标记截断（N+1 检测）；

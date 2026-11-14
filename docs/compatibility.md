@@ -114,6 +114,35 @@
 - HTTP 请求走 `http.ProxyFromEnvironment`：本机设置了 `HTTP_PROXY` 时必须把集群地址加入 `NO_PROXY`，否则代理会改写请求（服务端报 "Conflicting database specification: 'http:' in URL path"）。
 - `/tmp` 为小容量 tmpfs 时需设置 `GOTMPDIR`。
 
+### 2026-11-14 · ClickHouse 26.3.13.31（official build）· 192.168.110.48~51（2 分片 × 2 副本虚拟机集群，弱磁盘）
+
+首个 26.10 之外的验证版本。通过 doctor CLI 对 4 节点全检查实跑（native，多目标），
+并对可疑输出做了 native/HTTP 同刻交叉验证。集群特征：虚拟机磁盘极慢
+（`system.detached_parts` 单表 `count()` 达 72s）、Keeper 会话反复丢失恢复。
+
+- 七个检查全部可执行；判定、归并、截断、预算行为与 26.10 观察一致。
+- **跨分片归并（首次真实多分片验证）**：17 条 `NO_REPLICA_HAS_PART` 按
+  `(ShardID, Database, Table, PartName)` 归并——同分片两副本合并并保留双来源观测，
+  不同分片的同名表不合并；11 条积压匹配、852 条副本匹配同样按分片正确分组。
+- **Keeper 会话丢失窗口的真实形态（重要）**：`system.replicas` 的读数随 Keeper
+  会话状态在两种形态间切换（分钟级窗口）。丢失窗口：`total_replicas=0`（物理不可能值）、
+  `is_session_expired=1`、`is_readonly` 大面积命中、`absolute_delay`/`lost_part_count`
+  归零——4 节点同时进入；恢复窗口：数值全部回到真实读数。native 与 HTTP 明细读数
+  一致（服务端行为，非驱动/适配层问题）；同刻交叉验证时两次查询可能各落在不同窗口，
+  结果看似矛盾，**单次检查结果必须结合采集时间戳解读**。据此新增理由码
+  `keeper_unreachable`（total_replicas=0，独立于 readonly/expired 判定），
+  `replica_status` RuleVersion 升为 `2`。
+- **慢集群预算（doctor 实测）**：默认单节点 2s 必然超时（`system.replicas`、
+  `system.detached_parts` 在慢盘上分钟级才返回）；`--node-timeout 60s --timeout 120s`
+  可跑通，超时节点每次不同（随当刻磁盘负载）。doctor 新增
+  `--max-rows-per-node`（默认 1000，detached 海量场景需调大）与
+  `--parallel-checks`（默认串行）。
+- **N+1 截断（真实数据触发）**：detached part 单节点保留 1000 条即截断，
+  报告正确标记 `TRUNCATED` + `rerun_with_higher_row_limit`，Execution=partial。
+- 集群病理与 doctor 输出自洽：Keeper 反复丢会话 → 副本周期性只读 →
+  复制队列 44 天积压（重试 42+）、17 处 `NO_REPLICA_HAS_PART`、大量
+  服务端自行下线的 detached part（含 broken）。诊断结论跨检查一致。
+
 ## 未覆盖项
 
 - [ ] ckman 首发环境的服务器版本（以 ckman 实际使用版本为准，不预先承诺宽范围）
@@ -122,9 +151,9 @@
 - [ ] 更旧服务器版本的异常文本是否包含 `NO_REPLICA_HAS_PART` 符号名（见“已知匹配风险”）
 - [ ] 会话设置（result_overflow_mode 等）对结果完整性的影响
 - [ ] HTTP 直连路径（v2.15 `Options.Protocol` 字段失效，见上）在 ckman 实际封装中的等价验证
-- [ ] 多分片／多服务器拓扑下的真实跨节点归并（本次为单机双副本）
+- [x] 多分片／多服务器拓扑下的真实跨节点归并 —— 已完成（2026-11-14，2 分片 × 2 副本真实集群，见上）
 - [ ] `TooManyParts` 固定查询在更旧服务器版本的列集与 `SYSTEM STOP MERGES` 按表语法（26.10 已验证）
-- [ ] `ReplicaStatus` 的 readonly/session_expired 在**可操控 Keeper** 环境下的主动复现（停 Keeper/断会话；本次 readonly 证据来自真实病变残留表，active 缺口由 ghost znode 构造）
+- [x] `ReplicaStatus` 的 readonly/session_expired 在 **Keeper 会话丢失**环境下的复现 —— 已完成（2026-11-14，真实集群 Keeper 反复丢会话窗口内被动复现，含 `total_replicas=0` 形态与 `keeper_unreachable` 新规则；主动停 Keeper 构造仍可选做）
 - [ ] `ReplicaStatus` 固定查询在更旧服务器版本的 `system.replicas` 列集（26.10 已验证）
 - [ ] `MutationsStuck` 固定查询在更旧服务器版本的 `system.mutations` 列集与 `dateDiff('second', ...)` 可用性（26.10 已验证；所选列均为古老列，预期旧版本可用，未实测）
 - [ ] `ReplicationQueueBacklog` 固定查询在更旧服务器版本的 `system.replication_queue` 列集与 `countIf`/`dateDiff('second', min(create_time), now())` 可用性（26.10 已验证；所选列均为古老列，预期旧版本可用，未实测）
