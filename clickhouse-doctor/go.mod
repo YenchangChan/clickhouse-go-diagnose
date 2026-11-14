@@ -52,6 +52,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-// 相对路径 replace：离开 go.work 也能单独构建本模块。
+// 本地开发时核心库由仓库根的 go.work（use .）解析到工作区；GOWORK=off
+// 单独构建使用 require 的核心库发布版本。不得使用 replace 指令：go install
+// module@version 禁止目标模块 go.mod 含 replace。
 // 核心库保持只依赖标准库，clickhouse-go 只出现在本模块。
-replace github.com/YenchangChan/clickhouse-go-diagnose => ../

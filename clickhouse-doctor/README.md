@@ -24,7 +24,7 @@ go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor@late
 go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/chat@latest
 ```
 
-本目录是仓库内的嵌套独立模块，版本 tag 带子目录前缀（`clickhouse-doctor/vX.Y.Z`），`@latest` 解析该前缀的最新 tag。`go.mod` 中的相对路径 `replace` 仅在源码树内构建时生效，`go install` 安装发布版本时自动使用 require 的核心库版本，两者不冲突。
+本目录是仓库内的嵌套独立模块，版本 tag 带子目录前缀（`clickhouse-doctor/vX.Y.Z`），`@latest` 解析该前缀的最新 tag。本地开发时核心库由仓库根的 `go.work`（`use .`）解析到工作区；`go install` 安装发布版本时使用 require 声明的核心库版本。`go.mod` 不含 `replace` 指令——`go install module@version` 禁止目标模块带 `replace`。
 
 也可以从源码构建：
 

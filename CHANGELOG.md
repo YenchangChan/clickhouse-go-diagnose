@@ -15,7 +15,7 @@
 - **chat 交互现代化与上下文预算**：颜色/图标/markdown 渲染（glamour，管道输出自动降级纯文本）、spinner 与工具调用进度（stdout 与 stderr 分离，管道消费两侧互不干扰）；`run_check` 工具结果 32KB 结构化裁剪（逐级降配保留证据统计），配合 nova compaction 每轮估算上下文、逼近端点上限时把较早轮次替换为摘要——修复长会话工具结果无损累积导致的 token 超限失败（实测 334K > 160K 端点上限，裁剪后全面体检 9 轮工具调用完整跑通）。
 - `clickhouse-doctor` 改为统一入口的表驱动消费端：`--list-checks` 直接来自核心库 `ListChecks()`（输出 ID + 描述）；检查清单不再在 CLI 硬编码；`runCheck` 只保留 CLI 阈值到槽位的对位与 Matches 渲染转换两个注册点。
 - `Makefile`（build/test/race/vet/fmt/assert-deps/check/clean）与自测教程 `clickhouse-doctor/TESTING.md`。
-- **README 按"库引用/工具使用"两种方式组织教程**；`clickhouse-doctor` 支持安装：`go install .../clickhouse-doctor@latest`（及 `.../chat@latest`）。嵌套模块发布依赖 `clickhouse-doctor/vX.Y.Z` 前缀 tag；`go.mod` 对核心库的 require 相应指向 v0.3.0（相对路径 `replace` 仅源码树内生效，二者不冲突）。
+- **README 按"库引用/工具使用"两种方式组织教程**；`clickhouse-doctor` 支持安装：`go install .../clickhouse-doctor@latest`（及 `.../chat@latest`）。嵌套模块发布依赖 `clickhouse-doctor/vX.Y.Z` 前缀 tag；`go.mod` 对核心库的 require 相应指向 v0.3.0。`go.mod` 不含 `replace`（`go install module@version` 禁止目标模块带 `replace`），本地开发解析由 go.work（`use .`）承担，`GOWORK=off` 单独构建使用 require 的核心库发布版本。
 
 ### 变更
 
