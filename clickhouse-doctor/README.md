@@ -9,7 +9,31 @@
 - **`clickhouse-doctor`**（本目录，默认）：零 LLM 的轻量 CLI，运行即退出，
   适合 CI、脚本、日常排障；
 - **`clickhouse-doctor-chat`**（[chat/](chat/)，可选）：Agent 入口，对话式
-  诊断解释与按需触发检查（见下文"Agent 入口"）。
+  诊断解释与按需触发检查（见下文"Agent 入口"；完整自测流程见
+  [TESTING.md](TESTING.md)）。
+
+## 安装
+
+前置：Go 1.26+（`chat` 入口要求 Go 1.26.6+，轻量 CLI 自身兼容旧版）。
+
+```bash
+# 轻量 CLI（零 LLM、零 Agent 依赖）
+go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor@latest
+
+# chat 入口（可选；内含 nova 与 markdown 渲染依赖）
+go install github.com/YenchangChan/clickhouse-go-diagnose/clickhouse-doctor/chat@latest
+```
+
+本目录是仓库内的嵌套独立模块，版本 tag 带子目录前缀（`clickhouse-doctor/vX.Y.Z`），`@latest` 解析该前缀的最新 tag。`go.mod` 中的相对路径 `replace` 仅在源码树内构建时生效，`go install` 安装发布版本时自动使用 require 的核心库版本，两者不冲突。
+
+也可以从源码构建：
+
+```bash
+# 仓库根执行，产物在 clickhouse-doctor/bin/
+make build
+# 或
+cd clickhouse-doctor && go build -o bin/clickhouse-doctor . && go build -o bin/clickhouse-doctor-chat ./chat
+```
 
 ## 使用
 
