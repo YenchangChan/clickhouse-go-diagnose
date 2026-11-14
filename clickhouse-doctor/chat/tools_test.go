@@ -169,6 +169,66 @@ func TestRunCheckEmptyTargetsIsToolError(t *testing.T) {
 	}
 }
 
+func TestTrimPayloadSmallReportUntouched(t *testing.T) {
+	payload := map[string]any{"report": map[string]any{"matches": []any{}}}
+	got := trimPayload(payload)
+	out, _ := json.Marshal(got)
+	if len(out) > 1024 && strings.Contains(string(out), "truncated") {
+		t.Errorf("小报告不应被裁剪: %s", out)
+	}
+	if _, has := got["truncated"]; has {
+		t.Errorf("小报告不应注入 truncated 标记")
+	}
+}
+
+func TestTrimPayloadLargeReportTruncated(t *testing.T) {
+	// 构造超过 32KB 的报告：300 条 matches，每条 8 个观测。
+	matches := make([]any, 0, 300)
+	for i := 0; i < 300; i++ {
+		obs := make([]any, 0, 8)
+		for j := 0; j < 8; j++ {
+			obs = append(obs, map[string]any{
+				"node_id":       "192.168.110.49:9000",
+				"part_name":     fmt.Sprintf("all_%d_%d_%d_%d", i, j, 1000+i, 2000+j),
+				"reason":        "broken-on-start",
+				"long_evidence": strings.Repeat("x", 64),
+			})
+		}
+		matches = append(matches, map[string]any{
+			"database":     "db1",
+			"table":        fmt.Sprintf("t%d", i),
+			"observations": obs,
+		})
+	}
+	payload := map[string]any{"report": map[string]any{"matches": matches}}
+	got := trimPayload(payload)
+	out, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) > toolResultMaxBytes {
+		t.Fatalf("裁剪后应低于上限: %d bytes", len(out))
+	}
+	var payload2 struct {
+		Report struct {
+			Matches      []json.RawMessage `json:"matches"`
+			MatchesTotal int               `json:"matches_total"`
+			Truncated    string            `json:"truncated"`
+		} `json:"report"`
+		Truncated bool `json:"truncated"`
+	}
+	report := &payload2.Report
+	if err := json.Unmarshal(out, &payload2); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Matches) != 20 || report.MatchesTotal != 300 {
+		t.Errorf("matches 应保留 20/300, got %d/%d", len(report.Matches), report.MatchesTotal)
+	}
+	if report.Truncated == "" || !payload2.Truncated {
+		t.Error("应注入截断说明（report 层与 payload 层）")
+	}
+}
+
 // ---- 分层断言：轻量 CLI 依赖闭包不得出现 nova ----
 
 func execGoList(t *testing.T, modulePath string) (string, error) {

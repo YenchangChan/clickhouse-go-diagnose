@@ -8,4 +8,6 @@ coverage.out
 .workbuddy/
 .Trash-0/
 .DS_Store
-doctor/doctor
+
+# CLI 构建产物
+clickhouse-doctor/bin/

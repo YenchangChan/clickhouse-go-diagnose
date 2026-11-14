@@ -13,12 +13,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/AutumnsGrove/nova/agent"
+	"github.com/AutumnsGrove/nova/compaction"
 	"github.com/AutumnsGrove/nova/message"
 	"github.com/AutumnsGrove/nova/provider/openaicompat"
 
@@ -115,6 +114,11 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		BaseURL: opts.baseURL,
 		APIKey:  opts.apiKey,
 	})
+	// 输出分离：模型回复（markdown 渲染后）走 stdout，banner/提示符/工具
+	// 进度/spinner 走 stderr——管道消费两侧互不干扰。stdout 非 TTY 时
+	// 颜色与动画自动降级为纯文本。
+	tty := stdoutIsTTY()
+	uiTTY = tty
 	a := agent.New(agent.Config{
 		Provider:       provider,
 		Model:          opts.model,
@@ -122,12 +126,33 @@ func run(args []string, stdout, stderr io.Writer) (int, error) {
 		Tools:          newTools(env),
 		MaxTurns:       opts.maxTurns,
 		RequestTimeout: defaultLLMTimeout,
+		Emit:           makeEmitter(newSpinner(stderr, tty), stderr),
 	})
 
-	fmt.Fprintf(stderr, "clickhouse-doctor-chat %s 目标 %d 个节点，模型 %s\n", version, len(tgts), opts.model)
-	fmt.Fprintln(stderr, "注意：以下回复均为 AI 解释；诊断结论以工具返回的结构化报告为准。输入 exit 退出。")
+	targetSummary := fmt.Sprintf("%d 个节点", len(tgts))
+	if len(specs) <= 3 {
+		var addrs []string
+		for _, s := range specs {
+			addrs = append(addrs, s.Addr)
+		}
+		targetSummary = strings.Join(addrs, ", ")
+	}
+	fmt.Fprintln(stderr, banner(version, opts.model, targetSummary, tty))
 
-	return repl(context.Background(), a, stdout, stderr)
+	// 上下文压缩器：上限取端点实际限制（硅基流动 163840），留 24K 余量。
+	compactor := &compaction.Compactor{
+		Provider: provider,
+		Model:    opts.model,
+		Settings: compaction.Settings{
+			Enabled:          true,
+			ContextLimit:     163840,
+			Reserve:          24000,
+			KeepRecent:       24000,
+			SummaryMaxTokens: 2000,
+		},
+	}
+
+	return repl(a, stdout, stderr, tty, compactor)
 }
 
 func nodeSpecs(o options) ([]targets.Spec, error) {
@@ -151,15 +176,30 @@ const (
 )
 
 // repl 是交互循环：每行输入触发一次 agent.Run，history 全量累积。
-func repl(ctx context.Context, a *agent.Agent, stdout, stderr io.Writer) (int, error) {
-	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+// 退出方式：exit / quit / Ctrl+D（EOF）/ Ctrl+C（默认信号行为，直接终止）。
+// 不拦截信号——之前拦截后 Ctrl+C 只取消了 context，而循环阻塞在
+// Scanner 上感知不到，进程像"无法退出"。
+//
+// 上下文预算：每轮结束后估算 token，逼近端点上限（硅基流动 160K）时
+// 用 nova 的 compaction 把较早轮次摘要替换，避免 334K 超限崩溃。
+func repl(a *agent.Agent, stdout, stderr io.Writer, tty bool, compactor *compaction.Compactor) (int, error) {
+	renderer := newAnswerRenderer(tty)
+	prompt := "> "
+	if tty {
+		prompt = stylePrompt.Render("❯ ")
+	}
 
 	sc := bufio.NewScanner(os.Stdin)
 	var history []message.Message
 	for {
-		fmt.Fprint(stderr, "> ")
+		if tty {
+			fmt.Fprint(stderr, prompt)
+		}
 		if !sc.Scan() {
+			// Ctrl+D / EOF：换行收尾，干净退出。
+			if tty {
+				fmt.Fprintln(stderr)
+			}
 			break
 		}
 		line := strings.TrimSpace(sc.Text())
@@ -169,20 +209,28 @@ func repl(ctx context.Context, a *agent.Agent, stdout, stderr io.Writer) (int, e
 		if line == "exit" || line == "quit" {
 			break
 		}
-		fmt.Fprintln(stderr, "（执行中，可能包含多次工具调用…）")
-		res, err := a.Run(ctx, history, message.User(line))
+		res, err := a.Run(context.Background(), history, message.User(line))
 		if err != nil {
-			// 中断（Ctrl+C）按正常退出处理；其余错误继续会话，
-			// 让用户可以换一种问法——会话状态不受单轮失败影响。
-			if ctx.Err() != nil {
-				return exitOK, nil
-			}
-			fmt.Fprintln(stderr, "本轮失败:", err)
+			// 单轮失败不结束会话（Ctrl+C 直接杀进程，不存在 ctx 分支），
+			// 用户可以换一种问法继续。
+			fmt.Fprintln(stderr, paint(styleFail, "✗ 本轮失败:"), err)
 			continue
 		}
 		history = append(history, res.New...)
-		fmt.Fprintln(stdout, res.Answer)
-		fmt.Fprintf(stderr, "（AI 解释，共 %d 轮工具调用；以上述报告为准）\n", res.Turns)
+		fmt.Fprintln(stdout, renderer.render(res.Answer))
+		fmt.Fprintln(stderr, paint(styleNote, fmt.Sprintf("✦ AI 解释 · %d 轮工具调用 · 诊断结论以结构化报告为准", res.Turns)))
+
+		if compaction.ShouldCompact(compactor.Settings, history, nil) {
+			cr, err := compactor.Compact(context.Background(), history, "")
+			if err != nil {
+				fmt.Fprintln(stderr, paint(styleFail, "✗ 上下文压缩失败，长会话可能触发端点 token 上限，建议 exit 后重开"), err)
+				continue
+			}
+			nh := []message.Message{message.User("<summary>\n" + cr.Summary + "\n</summary>")}
+			nh = append(nh, history[cr.FirstKept:]...)
+			history = nh
+			fmt.Fprintln(stderr, paint(styleNote, fmt.Sprintf("✦ 上下文已自动压缩：%d → 约 %d tokens，较早轮次已替换为摘要", cr.TokensBefore, cr.TokensAfter)))
+		}
 	}
 	return exitOK, nil
 }

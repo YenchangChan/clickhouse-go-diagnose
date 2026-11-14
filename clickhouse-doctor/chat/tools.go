@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/AutumnsGrove/nova/tool"
@@ -135,12 +136,74 @@ func runCheckTool(env checkEnv) tool.Tool {
 			// 按契约先报告后错误，把两者都交给模型。
 			payload["execution_error"] = err.Error()
 		}
-		out, merr := json.MarshalIndent(payload, "", "  ")
+		out, merr := json.MarshalIndent(trimPayload(payload), "", "  ")
 		if merr != nil {
 			return tool.Errorf("报告序列化失败: %v", merr), nil
 		}
 		return tool.Text("%s", out), nil
 	})
+}
+
+// toolResultMaxBytes 是单个工具结果进入模型上下文的大小上限。
+// detached_parts 等海量报告（四节点实测单次 1.3MB——单条 match 的
+// observations 可达数千个）若原样进入 history，会在后续每轮请求中
+// 重复携带，迅速撑爆端点的 prompt 上限。
+const toolResultMaxBytes = 32 * 1024
+
+// trimPayload 把超过上限的报告做结构化裁剪，逐级降配直到达标：
+// 20 条匹配 × 4 观测 → 10×2 → 5×1 → 仅保留统计。逐级是因为海量报告
+// 有两种形态：matches 多（too_many_parts），或单条 match 的
+// observations 极多（detached_parts 按表归并），一级裁剪覆盖不全。
+// 裁剪是通用的 JSON 操作（归并键都是 matches/observations），不依赖具体类型。
+func trimPayload(payload map[string]any) map[string]any {
+	if underLimit(payload) {
+		return payload
+	}
+	reportJSON, err := json.Marshal(payload["report"])
+	if err != nil {
+		return payload
+	}
+	var report map[string]any
+	if err := json.Unmarshal(reportJSON, &report); err != nil {
+		return payload
+	}
+	matches, _ := report["matches"].([]any)
+	total := len(matches)
+
+	for _, step := range []struct{ keepM, keepO int }{{20, 4}, {10, 2}, {5, 1}} {
+		kept := matches
+		if len(matches) > step.keepM {
+			kept = matches[:step.keepM]
+		}
+		for _, m := range kept {
+			mo, ok := m.(map[string]any)
+			if !ok {
+				continue
+			}
+			if obs, ok := mo["observations"].([]any); ok && len(obs) > step.keepO {
+				mo["observations"] = obs[:step.keepO]
+			}
+		}
+		report["matches"] = kept
+		report["matches_total"] = total
+		report["truncated"] = fmt.Sprintf("报告过大已裁剪：保留前 %d 条匹配（每条 %d 个观测），共 %d 条。需要其余内容请缩小问题范围（如指定库/表）后重跑", len(kept), step.keepO, total)
+		payload["report"] = report
+		payload["truncated"] = true
+		if underLimit(payload) {
+			return payload
+		}
+	}
+
+	// 最终降级：细节全部省略，只留统计与引导。
+	report["matches"] = []any{}
+	report["truncated"] = fmt.Sprintf("报告过大（共 %d 条匹配），已省略全部细节。请缩小问题范围（如指定库/表）后重跑", total)
+	payload["report"] = report
+	return payload
+}
+
+func underLimit(payload map[string]any) bool {
+	out, err := json.Marshal(payload)
+	return err == nil && len(out) <= toolResultMaxBytes
 }
 
 func slotKeys(meta *diagnose.CheckMeta) string {

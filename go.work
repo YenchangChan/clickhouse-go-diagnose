@@ -1,7 +1,7 @@
 // 本地开发工作区：integration（真机测试）与 clickhouse-doctor（CLI 消费端）
 // 为独立模块，通过 use 引用核心库，不把 clickhouse-go 引入核心依赖。
 // 发布时删除或保留均可（不影响 go.mod）。
-go 1.26.6
+go 1.26.7
 
 use (
 	.
