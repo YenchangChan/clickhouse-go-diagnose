@@ -170,21 +170,21 @@ type NodeResult struct {
 	ShardID string     `json:"shard_id"`
 	Status  NodeStatus `json:"status"`
 
-	RowsRead  int  // 本节点实际读取的行数（含未匹配行） `json:"rows_read"`
-	RowsKept  int  // 匹配且保留的异常行数 `json:"rows_kept"`
-	Truncated bool // 达到保留上限后停止读取；本节点清单不完整 `json:"truncated"`
+	RowsRead  int  `json:"rows_read"` // 本节点实际读取的行数（含未匹配行）
+	RowsKept  int  `json:"rows_kept"` // 匹配且保留的异常行数
+	Truncated bool `json:"truncated"` // 达到保留上限后停止读取；本节点清单不完整
 
-	ErrCategory string // Status 为 failed 或 not_started 时非空 `json:"err_category"`
-	ErrMessage  string // 可能包含服务端异常文本，UI 必须按文本转义展示 `json:"err_message"`
+	ErrCategory string `json:"err_category"` // Status 为 failed 或 not_started 时非空
+	ErrMessage  string `json:"err_message"`  // 可能包含服务端异常文本，UI 必须按文本转义展示
 
-	StartedAt  time.Time // 未启动时为零值 `json:"started_at"`
-	FinishedAt time.Time // 未启动时为零值 `json:"finished_at"`
+	StartedAt  time.Time `json:"started_at"`  // 未启动时为零值
+	FinishedAt time.Time `json:"finished_at"` // 未启动时为零值
 }
 
 // QueueObservation 是一条匹配证据：哪个节点的队列记录了该异常。
 type QueueObservation struct {
 	NodeID        string `json:"node_id"`
-	LastException string // 原始异常文本，可能包含敏感信息 `json:"last_exception"`
+	LastException string `json:"last_exception"` // 原始异常文本，可能包含敏感信息
 }
 
 // QueueMatch 是按 (ShardID, Database, Table, PartName) 归并后的异常对象。
@@ -232,8 +232,8 @@ type ReplicationQueueReport struct {
 // PartsObservation 是一条分区统计证据：哪个节点报告了该分区的 part 数。
 type PartsObservation struct {
 	NodeID    string `json:"node_id"`
-	Parts     int    // 该节点上该分区的活跃 part 数 `json:"parts"`
-	DiskBytes string // 磁盘占用，服务端 toString 后的十进制字符串 `json:"disk_bytes"`
+	Parts     int    `json:"parts"`      // 该节点上该分区的活跃 part 数
+	DiskBytes string `json:"disk_bytes"` // 磁盘占用，服务端 toString 后的十进制字符串
 }
 
 // PartsMatch 是按 (ShardID, Database, Table, Partition) 归并后的分区统计。
@@ -244,7 +244,7 @@ type PartsMatch struct {
 	Database     string             `json:"database"`
 	Table        string             `json:"table"`
 	Partition    string             `json:"partition"`
-	Parts        int                // 观测中的最大 part 数 `json:"parts"`
+	Parts        int                `json:"parts"` // 观测中的最大 part 数
 	Observations []PartsObservation `json:"observations"`
 }
 
@@ -275,7 +275,7 @@ type ReplicaObservation struct {
 
 	IsReadonly       bool `json:"is_readonly"`
 	IsSessionExpired bool `json:"is_session_expired"`
-	AbsoluteDelay    int  // 秒 `json:"absolute_delay"`
+	AbsoluteDelay    int  `json:"absolute_delay"` // 秒
 	TotalReplicas    int  `json:"total_replicas"`
 	ActiveReplicas   int  `json:"active_replicas"`
 	LostPartCount    int  `json:"lost_part_count"`
@@ -319,8 +319,8 @@ type ReplicaStatusReport struct {
 type MutationObservation struct {
 	NodeID string `json:"node_id"`
 
-	Command    string // 原始 mutation 命令，可能包含敏感字面量，UI 必须按文本转义展示 `json:"command"`
-	AgeSeconds int    // 服务端 dateDiff 计算的未完成时长（秒） `json:"age_seconds"`
+	Command    string `json:"command"`     // 原始 mutation 命令，可能包含敏感字面量，UI 必须按文本转义展示
+	AgeSeconds int    `json:"age_seconds"` // 服务端 dateDiff 计算的未完成时长（秒）
 
 	// LatestFailReason 是原始失败文本（空表示从未失败），可能包含敏感
 	// 信息与完整堆栈。
@@ -367,10 +367,10 @@ type MutationsStuckReport struct {
 type QueueBacklogObservation struct {
 	NodeID string `json:"node_id"`
 
-	Depth            int // 该节点上该表的在队条目数 `json:"depth"`
-	OldestAgeSeconds int // 服务端 dateDiff 计算的最老条目年龄（秒） `json:"oldest_age_seconds"`
-	MaxRetries       int // 在队条目中的最大重试次数 `json:"max_retries"`
-	FailingEntries   int // 在队条目中带异常文本的数量（背景证据，非判定规则） `json:"failing_entries"`
+	Depth            int `json:"depth"`              // 该节点上该表的在队条目数
+	OldestAgeSeconds int `json:"oldest_age_seconds"` // 服务端 dateDiff 计算的最老条目年龄（秒）
+	MaxRetries       int `json:"max_retries"`        // 在队条目中的最大重试次数
+	FailingEntries   int `json:"failing_entries"`    // 在队条目中带异常文本的数量（背景证据，非判定规则）
 
 	Reasons []string `json:"reasons"`
 }
@@ -383,9 +383,9 @@ type QueueBacklogMatch struct {
 	ShardID          string `json:"shard_id"`
 	Database         string `json:"database"`
 	Table            string `json:"table"`
-	Depth            int    // 观测中的最大在队条目数 `json:"depth"`
-	OldestAgeSeconds int    // 观测中的最大最老条目年龄 `json:"oldest_age_seconds"`
-	MaxRetries       int    // 观测中的最大重试次数 `json:"max_retries"`
+	Depth            int    `json:"depth"`              // 观测中的最大在队条目数
+	OldestAgeSeconds int    `json:"oldest_age_seconds"` // 观测中的最大最老条目年龄
+	MaxRetries       int    `json:"max_retries"`        // 观测中的最大重试次数
 
 	Observations []QueueBacklogObservation `json:"observations"`
 }
@@ -418,7 +418,7 @@ type DiskObservation struct {
 	FreeBytes     uint64 `json:"free_bytes"`
 	TotalBytes    uint64 `json:"total_bytes"`
 	KeepFreeBytes uint64 `json:"keep_free_bytes"`
-	FreePercent   int    // 0-100；total_space=0 时为 -1（不可计算） `json:"free_percent"`
+	FreePercent   int    `json:"free_percent"` // 0-100；total_space=0 时为 -1（不可计算）
 
 	Reasons []string `json:"reasons"`
 }
@@ -431,7 +431,7 @@ type DiskSpaceMatch struct {
 	ShardID     string `json:"shard_id"`
 	DiskName    string `json:"disk_name"`
 	Path        string `json:"path"`
-	FreePercent int    // 观测中最差（最小）水位；全部不可计算时为 -1 `json:"free_percent"`
+	FreePercent int    `json:"free_percent"` // 观测中最差（最小）水位；全部不可计算时为 -1
 
 	Observations []DiskObservation `json:"observations"`
 }
@@ -463,7 +463,7 @@ type DiskSpaceReport struct {
 type DetachedObservation struct {
 	NodeID      string `json:"node_id"`
 	PartName    string `json:"part_name"`
-	Reason      string // 服务端 reason 原始值；空表示用户手工 detach `json:"reason"`
+	Reason      string `json:"reason"` // 服务端 reason 原始值；空表示用户手工 detach
 	Disk        string `json:"disk"`
 	BytesOnDisk uint64 `json:"bytes_on_disk"`
 
@@ -480,7 +480,7 @@ type DetachedMatch struct {
 	Database string `json:"database"`
 	Table    string `json:"table"`
 
-	Parts int // 观测中的最大单节点 detached 总数 `json:"parts"`
+	Parts int `json:"parts"` // 观测中的最大单节点 detached 总数
 
 	// Reasons 是匹配级判定理由（ReasonDetachedCountExceeded）。
 	Reasons []string `json:"reasons"`

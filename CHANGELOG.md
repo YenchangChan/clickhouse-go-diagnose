@@ -2,6 +2,12 @@
 
 格式参考 Keep a Changelog；版本遵循语义化版本。
 
+## [v0.3.1] - 2026-11-14
+
+### 修复
+
+- 修正核心报告结构中写在行尾注释、未被 Go 识别的 `json` tag；`NodeResult`、各类 observation/match 现在真实输出文档约定的 snake_case 字段。增加反射式 JSON 契约测试，后续新增报告字段若缺少显式 snake_case tag 会直接失败。
+
 ## [v0.3.0] - 2026-11-14
 
 统一检查入口（Agent-friendly）、消费端 Agent 入口与交互现代化、报告 JSON 契约。
