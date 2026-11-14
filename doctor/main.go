@@ -394,21 +394,20 @@ const (
 
 var listChecks bool
 
+// allCheckNames 从核心库 ListChecks() 取全部检查 ID：doctor 不维护
+// 检查清单，主仓新增检查后 doctor 自动跟随（阈值与渲染转换需各自补注册）。
 func allCheckNames() []string {
-	return []string{
-		checkQueueFailures,
-		checkTooManyParts,
-		checkReplicaStatus,
-		checkMutationsStuck,
-		checkQueueBacklog,
-		checkDiskSpaceLow,
-		checkDetachedParts,
+	metas := diagnose.ListChecks()
+	names := make([]string, 0, len(metas))
+	for _, m := range metas {
+		names = append(names, m.ID)
 	}
+	return names
 }
 
 func printChecks(w io.Writer) {
-	for _, n := range allCheckNames() {
-		fmt.Fprintln(w, n)
+	for _, m := range diagnose.ListChecks() {
+		fmt.Fprintf(w, "%s\t%s\n", m.ID, m.Description)
 	}
 }
 

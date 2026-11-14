@@ -14,7 +14,7 @@
 
 ## v0 范围
 
-七个独立检查，各自返回结构化报告：复制队列的 `NO_REPLICA_HAS_PART` 异常（`CheckReplicationQueueFailures`）、单分区活跃 part 数超阈值（`CheckTooManyParts`）、副本状态异常（`CheckReplicaStatus`：Keeper 不可达、只读、会话过期、active 副本缺口、延迟超阈值、丢件记录）、卡住的 mutation（`CheckMutationsStuck`：失败重试、未完成超龄）、队列积压（`CheckReplicationQueueBacklog`：在队条目数、最老条目年龄、重试次数超阈值）、磁盘水位（`CheckDiskSpaceLow`：剩余占比阈值、keep_free_space 保留量击穿）与 detached part（`CheckDetachedParts`：损坏、服务端自行下线、单表数量超阈值）。所有检查保留节点来源和检查完整性。匹配/超阈值**不等于**确认故障起因或需要修复；无匹配**不等于**集群健康。不自动修复，不依赖 LLM。
+七个独立检查，各自返回结构化报告：复制队列的 `NO_REPLICA_HAS_PART` 异常（`CheckReplicationQueueFailures`）、单分区活跃 part 数超阈值（`CheckTooManyParts`）、副本状态异常（`CheckReplicaStatus`：Keeper 不可达、只读、会话过期、active 副本缺口、延迟超阈值、丢件记录）、卡住的 mutation（`CheckMutationsStuck`：失败重试、未完成超龄）、队列积压（`CheckReplicationQueueBacklog`：在队条目数、最老条目年龄、重试次数超阈值）、磁盘水位（`CheckDiskSpaceLow`：剩余占比阈值、keep_free_space 保留量击穿）与 detached part（`CheckDetachedParts`：损坏、服务端自行下线、单表数量超阈值）。所有检查保留节点来源和检查完整性。匹配/超阈值**不等于**确认故障起因或需要修复；无匹配**不等于**集群健康。库只产出证据与稳定理由码，**不判定严重级别/告警档位**——分级由消费端基于证据自行决定。不自动修复，不依赖 LLM。
 
 ## 使用
 
@@ -38,6 +38,27 @@ report, err := diagnose.CheckReplicationQueueFailures(ctx, []diagnose.Target{
 
 // 关键：即使 err 非空（取消、超时、ErrNoUsableObservation），
 // report 中已保留的证据仍然有效，应先处理报告再展示错误。
+```
+
+### 统一入口（可枚举、按名执行）
+
+```go
+// 枚举全部检查：稳定 ID、描述、RuleVersion 与阈值槽位声明。
+for _, meta := range diagnose.ListChecks() {
+    fmt.Println(meta.ID, meta.RuleVersion, meta.Description)
+}
+
+// 按检查 ID 统一执行。Thresholds 按槽位序透传（缺省用库默认值）；
+// 返回 Report 接口承载公共视图，Matches 在具体报告类型上。
+rep, err := diagnose.RunCheck(ctx, "replica_status", targets, diagnose.CheckOptions{
+    Timeout: 10 * time.Second,
+})
+header := rep.Header() // ID/RuleVersion/Execution/Outcome/Targets/NextSteps
+rs := rep.(diagnose.ReplicaStatusReport) // 需要逐表证据时断言具体类型
+```
+
+统一入口面向编排与机器消费（CLI/ckman/Agent 工具注册）；需要精确的
+Options 类型与报告类型时，直接调用各 `CheckXxx` 函数仍然完全等价。
 ```
 
 ## 结果语义

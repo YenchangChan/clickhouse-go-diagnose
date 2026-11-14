@@ -6,6 +6,12 @@
 
 ### 新增
 
+- 统一检查入口（Agent-friendly，不引入任何 Agent 概念）：`ListChecks() []CheckMeta` 枚举全部检查（稳定 ID、描述、RuleVersion、阈值槽位声明 `ThresholdSpec`）；`RunCheck(ctx, id, targets, CheckOptions)` 按执行；`Report`/`ReportHeader` 是各检查报告的公共视图（Execution/Outcome/Targets/NextSteps），类型各异的 Matches 仍在具体报告类型上，类型断言取用。`CheckOptions.Thresholds` 按槽位序透传，缺省用库默认值；未知 ID/槽位溢出/负值统一报 `ErrInvalidInput` 且返回 nil 报告。判定严重级别/告警档位不属于库的职责——库只产出证据与稳定理由码，由消费端（LLM/人）基于证据判断。
+- `IsInvalidInput(err)` 辅助函数。
+- `clickhouse-doctor` 改为统一入口的表驱动消费端：`--list-checks` 直接来自核心库 `ListChecks()`（输出 ID + 描述）；检查清单不再在 doctor 硬编码；`runCheck` 只保留 CLI 阈值到槽位的对位与 Matches 渲染转换两个注册点。
+
+### 变更
+
 - `replica_status` 新增判定规则与理由码 `keeper_unreachable`（`total_replicas=0`，物理不可能值，标识节点读不到 Keeper 副本清单；2026-11-14 真实集群 Keeper 会话丢失窗口实测发现，见 docs/compatibility.md）。RuleVersion `1` → `2`。
 - `clickhouse-doctor` 预算与编排 flag：`--max-rows-per-node`（单节点保留上限，默认库默认 1000；detached part 海量场景需调大避免截断）、`--parallel-checks`（默认关闭；串行对慢集群更温和）。doctor/README.md 新增"预算与编排"一节与慢集群实测参考值（弱磁盘虚拟机上默认 2s 单节点预算必然超时，建议 `--node-timeout 60s`）。
 

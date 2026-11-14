@@ -203,158 +203,225 @@ func viewFollowUps(fs []diagnose.FollowUp) []followUpView {
 	return out
 }
 
-// runCheck 按名称调用核心库检查，并把报告转换为视图。
-// 阈值与行数上限透传（0 表示用库默认值）；顶层 error 始终记入视图 Err 字段，
-// 报告本身照常渲染（契约：先报告后错误）。
+// runCheck 调用核心库 RunCheck 统一入口，并把报告转换为视图。
+// 检查清单、元数据与阈值槽位声明全部来自核心库 ListChecks()；doctor 只
+// 保留两件事：CLI 阈值到槽位的对位（thresholdsFor）与 Matches 的渲染
+// 转换（matchViewers）。顶层 error 始终记入视图 Err 字段，报告本身照常
+// 渲染（契约：先报告后错误）。
 func runCheck(ctx context.Context, name string, targets []diagnose.Target, total, node time.Duration, th thresholds, maxRows int) checkView {
 	v := checkView{Check: name, Targets: []targetView{}, Matches: []any{}, NextSteps: []followUpView{}}
-	switch name {
-	case checkQueueFailures:
-		rep, err := diagnose.CheckReplicationQueueFailures(ctx, targets, diagnose.ReplicationQueueOptions{
-			Timeout: total, NodeTimeout: node, MaxRowsPerNode: maxRows,
-		})
-		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
-		for _, m := range rep.Matches {
-			obs := make([]queueFailureObsView, 0, len(m.Observations))
-			for _, o := range m.Observations {
-				obs = append(obs, queueFailureObsView{NodeID: o.NodeID, LastException: o.LastException})
-			}
-			v.Matches = append(v.Matches, queueFailureMatchView{
-				ShardID: m.ShardID, Database: m.Database, Table: m.Table, PartName: m.PartName,
-				Observations: obs,
-			})
-		}
 
-	case checkTooManyParts:
-		rep, err := diagnose.CheckTooManyParts(ctx, targets, diagnose.TooManyPartsOptions{
-			Timeout: total, NodeTimeout: node, MaxRowsPerNode: maxRows, PartsThreshold: th.parts,
-		})
-		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
-		for _, m := range rep.Matches {
-			obs := make([]partsObsView, 0, len(m.Observations))
-			for _, o := range m.Observations {
-				obs = append(obs, partsObsView{NodeID: o.NodeID, Parts: o.Parts, DiskBytes: o.DiskBytes})
-			}
-			v.Matches = append(v.Matches, partsMatchView{
-				ShardID: m.ShardID, Database: m.Database, Table: m.Table, Partition: m.Partition,
-				Parts: m.Parts, Observations: obs,
-			})
+	opts := diagnose.CheckOptions{Timeout: total, NodeTimeout: node, MaxRowsPerNode: maxRows}
+	if slots := thresholdsFor(name, th); len(slots) > 0 {
+		opts.Thresholds = slots
+	}
+	rep, err := diagnose.RunCheck(ctx, name, targets, opts)
+	if rep != nil {
+		fillCommon(&v, rep.Header(), err)
+		if view := matchViewers[name]; view != nil {
+			v.Matches = view(rep)
 		}
-
-	case checkReplicaStatus:
-		rep, err := diagnose.CheckReplicaStatus(ctx, targets, diagnose.ReplicaStatusOptions{
-			Timeout: total, NodeTimeout: node, MaxRowsPerNode: maxRows, DelayThresholdSeconds: th.replicaDelaySeconds,
-		})
-		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
-		for _, m := range rep.Matches {
-			obs := make([]replicaObsView, 0, len(m.Observations))
-			for _, o := range m.Observations {
-				obs = append(obs, replicaObsView{
-					NodeID: o.NodeID, IsReadonly: o.IsReadonly, IsSessionExpired: o.IsSessionExpired,
-					AbsoluteDelaySecond: o.AbsoluteDelay, TotalReplicas: o.TotalReplicas,
-					ActiveReplicas: o.ActiveReplicas, LostPartCount: o.LostPartCount, Reasons: o.Reasons,
-				})
-			}
-			v.Matches = append(v.Matches, replicaMatchView{
-				ShardID: m.ShardID, Database: m.Database, Table: m.Table, Observations: obs,
-			})
-		}
-
-	case checkMutationsStuck:
-		rep, err := diagnose.CheckMutationsStuck(ctx, targets, diagnose.MutationsStuckOptions{
-			Timeout: total, NodeTimeout: node, MaxRowsPerNode: maxRows, AgeThresholdSeconds: th.mutationAgeSeconds,
-		})
-		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
-		for _, m := range rep.Matches {
-			obs := make([]mutationObsView, 0, len(m.Observations))
-			for _, o := range m.Observations {
-				obs = append(obs, mutationObsView{
-					NodeID: o.NodeID, Command: o.Command, AgeSeconds: o.AgeSeconds,
-					LatestFailReason: o.LatestFailReason, Reasons: o.Reasons,
-				})
-			}
-			v.Matches = append(v.Matches, mutationMatchView{
-				ShardID: m.ShardID, Database: m.Database, Table: m.Table, MutationID: m.MutationID,
-				Observations: obs,
-			})
-		}
-
-	case checkQueueBacklog:
-		rep, err := diagnose.CheckReplicationQueueBacklog(ctx, targets, diagnose.QueueBacklogOptions{
-			Timeout: total, NodeTimeout: node, MaxRowsPerNode: maxRows,
-			DepthThreshold:      th.queueDepth,
-			AgeThresholdSeconds: th.queueAgeSeconds,
-			RetriesThreshold:    th.queueRetries,
-		})
-		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
-		for _, m := range rep.Matches {
-			obs := make([]backlogObsView, 0, len(m.Observations))
-			for _, o := range m.Observations {
-				obs = append(obs, backlogObsView{
-					NodeID: o.NodeID, Depth: o.Depth, OldestAgeSeconds: o.OldestAgeSeconds,
-					MaxRetries: o.MaxRetries, FailingEntries: o.FailingEntries, Reasons: o.Reasons,
-				})
-			}
-			v.Matches = append(v.Matches, backlogMatchView{
-				ShardID: m.ShardID, Database: m.Database, Table: m.Table,
-				Depth: m.Depth, OldestAgeSeconds: m.OldestAgeSeconds, MaxRetries: m.MaxRetries,
-				Observations: obs,
-			})
-		}
-
-	case checkDiskSpaceLow:
-		rep, err := diagnose.CheckDiskSpaceLow(ctx, targets, diagnose.DiskSpaceOptions{
-			Timeout: total, NodeTimeout: node, MaxRowsPerNode: maxRows, FreePercentThreshold: th.diskFreePercent,
-		})
-		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
-		for _, m := range rep.Matches {
-			obs := make([]diskObsView, 0, len(m.Observations))
-			for _, o := range m.Observations {
-				obs = append(obs, diskObsView{
-					NodeID: o.NodeID, FreeBytes: o.FreeBytes, TotalBytes: o.TotalBytes,
-					KeepFreeBytes: o.KeepFreeBytes, FreePercent: o.FreePercent, Reasons: o.Reasons,
-				})
-			}
-			v.Matches = append(v.Matches, diskMatchView{
-				ShardID: m.ShardID, DiskName: m.DiskName, Path: m.Path,
-				FreePercent: m.FreePercent, Observations: obs,
-			})
-		}
-
-	case checkDetachedParts:
-		rep, err := diagnose.CheckDetachedParts(ctx, targets, diagnose.DetachedPartsOptions{
-			Timeout: total, NodeTimeout: node, MaxRowsPerNode: maxRows, CountThreshold: th.detachedCount,
-		})
-		fillCommon(&v, rep.CheckID, rep.RuleVersion, rep.StartedAt, rep.FinishedAt, rep.Execution, rep.Outcome, rep.Targets, rep.NextSteps, err)
-		for _, m := range rep.Matches {
-			obs := make([]detachedObsView, 0, len(m.Observations))
-			for _, o := range m.Observations {
-				obs = append(obs, detachedObsView{
-					NodeID: o.NodeID, PartName: o.PartName, Reason: o.Reason,
-					Disk: o.Disk, BytesOnDisk: o.BytesOnDisk, Reasons: o.Reasons,
-				})
-			}
-			v.Matches = append(v.Matches, detachedMatchView{
-				ShardID: m.ShardID, Database: m.Database, Table: m.Table,
-				Parts: m.Parts, Reasons: m.Reasons, Observations: obs,
-			})
-		}
+		return v
+	}
+	// RunCheck 校验失败（ErrInvalidInput）返回 nil 报告：公共字段留空，
+	// 错误进入视图。
+	if err != nil {
+		v.Err = err.Error()
 	}
 	return v
 }
 
-func fillCommon(v *checkView, checkID, ruleVersion string, started, finished time.Time,
-	exec diagnose.Execution, outcome diagnose.Outcome, targets []diagnose.NodeResult,
-	next []diagnose.FollowUp, err error) {
+// thresholdsFor 把 CLI 阈值按核心库声明的槽位顺序对位。0 表示用库默认值
+// （核心库零值语义），这里原样透传。
+func thresholdsFor(name string, th thresholds) []int {
+	switch name {
+	case checkTooManyParts:
+		return []int{th.parts}
+	case checkReplicaStatus:
+		return []int{th.replicaDelaySeconds}
+	case checkMutationsStuck:
+		return []int{th.mutationAgeSeconds}
+	case checkQueueBacklog:
+		return []int{th.queueDepth, th.queueAgeSeconds, th.queueRetries}
+	case checkDiskSpaceLow:
+		return []int{th.diskFreePercent}
+	case checkDetachedParts:
+		return []int{th.detachedCount}
+	default:
+		return nil
+	}
+}
 
-	v.CheckID = checkID
-	v.RuleVersion = ruleVersion
-	v.StartedAt = started
-	v.FinishedAt = finished
-	v.Execution = string(exec)
-	v.Outcome = string(outcome)
-	v.Targets = viewTargets(targets)
-	v.NextSteps = viewFollowUps(next)
+// matchViewers 把各检查的具体报告转换为其匹配视图。新增检查时在此注册；
+// 漏注册的检查仍渲染公共部分（Targets/NextSteps），只是 Matches 为空。
+var matchViewers = map[string]func(diagnose.Report) []any{
+	checkQueueFailures:  viewQueueFailureMatches,
+	checkTooManyParts:   viewPartsMatches,
+	checkReplicaStatus:  viewReplicaMatches,
+	checkMutationsStuck: viewMutationMatches,
+	checkQueueBacklog:   viewBacklogMatches,
+	checkDiskSpaceLow:   viewDiskMatches,
+	checkDetachedParts:  viewDetachedMatches,
+}
+
+func viewQueueFailureMatches(rep diagnose.Report) []any {
+	m, ok := rep.(diagnose.ReplicationQueueReport)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(m.Matches))
+	for _, mt := range m.Matches {
+		obs := make([]queueFailureObsView, 0, len(mt.Observations))
+		for _, o := range mt.Observations {
+			obs = append(obs, queueFailureObsView{NodeID: o.NodeID, LastException: o.LastException})
+		}
+		out = append(out, queueFailureMatchView{
+			ShardID: mt.ShardID, Database: mt.Database, Table: mt.Table, PartName: mt.PartName,
+			Observations: obs,
+		})
+	}
+	return out
+}
+
+func viewPartsMatches(rep diagnose.Report) []any {
+	m, ok := rep.(diagnose.TooManyPartsReport)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(m.Matches))
+	for _, mt := range m.Matches {
+		obs := make([]partsObsView, 0, len(mt.Observations))
+		for _, o := range mt.Observations {
+			obs = append(obs, partsObsView{NodeID: o.NodeID, Parts: o.Parts, DiskBytes: o.DiskBytes})
+		}
+		out = append(out, partsMatchView{
+			ShardID: mt.ShardID, Database: mt.Database, Table: mt.Table, Partition: mt.Partition,
+			Parts: mt.Parts, Observations: obs,
+		})
+	}
+	return out
+}
+
+func viewReplicaMatches(rep diagnose.Report) []any {
+	m, ok := rep.(diagnose.ReplicaStatusReport)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(m.Matches))
+	for _, mt := range m.Matches {
+		obs := make([]replicaObsView, 0, len(mt.Observations))
+		for _, o := range mt.Observations {
+			obs = append(obs, replicaObsView{
+				NodeID: o.NodeID, IsReadonly: o.IsReadonly, IsSessionExpired: o.IsSessionExpired,
+				AbsoluteDelaySecond: o.AbsoluteDelay, TotalReplicas: o.TotalReplicas,
+				ActiveReplicas: o.ActiveReplicas, LostPartCount: o.LostPartCount, Reasons: o.Reasons,
+			})
+		}
+		out = append(out, replicaMatchView{
+			ShardID: mt.ShardID, Database: mt.Database, Table: mt.Table, Observations: obs,
+		})
+	}
+	return out
+}
+
+func viewMutationMatches(rep diagnose.Report) []any {
+	m, ok := rep.(diagnose.MutationsStuckReport)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(m.Matches))
+	for _, mt := range m.Matches {
+		obs := make([]mutationObsView, 0, len(mt.Observations))
+		for _, o := range mt.Observations {
+			obs = append(obs, mutationObsView{
+				NodeID: o.NodeID, Command: o.Command, AgeSeconds: o.AgeSeconds,
+				LatestFailReason: o.LatestFailReason, Reasons: o.Reasons,
+			})
+		}
+		out = append(out, mutationMatchView{
+			ShardID: mt.ShardID, Database: mt.Database, Table: mt.Table, MutationID: mt.MutationID,
+			Observations: obs,
+		})
+	}
+	return out
+}
+
+func viewBacklogMatches(rep diagnose.Report) []any {
+	m, ok := rep.(diagnose.QueueBacklogReport)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(m.Matches))
+	for _, mt := range m.Matches {
+		obs := make([]backlogObsView, 0, len(mt.Observations))
+		for _, o := range mt.Observations {
+			obs = append(obs, backlogObsView{
+				NodeID: o.NodeID, Depth: o.Depth, OldestAgeSeconds: o.OldestAgeSeconds,
+				MaxRetries: o.MaxRetries, FailingEntries: o.FailingEntries, Reasons: o.Reasons,
+			})
+		}
+		out = append(out, backlogMatchView{
+			ShardID: mt.ShardID, Database: mt.Database, Table: mt.Table,
+			Depth: mt.Depth, OldestAgeSeconds: mt.OldestAgeSeconds, MaxRetries: mt.MaxRetries,
+			Observations: obs,
+		})
+	}
+	return out
+}
+
+func viewDiskMatches(rep diagnose.Report) []any {
+	m, ok := rep.(diagnose.DiskSpaceReport)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(m.Matches))
+	for _, mt := range m.Matches {
+		obs := make([]diskObsView, 0, len(mt.Observations))
+		for _, o := range mt.Observations {
+			obs = append(obs, diskObsView{
+				NodeID: o.NodeID, FreeBytes: o.FreeBytes, TotalBytes: o.TotalBytes,
+				KeepFreeBytes: o.KeepFreeBytes, FreePercent: o.FreePercent, Reasons: o.Reasons,
+			})
+		}
+		out = append(out, diskMatchView{
+			ShardID: mt.ShardID, DiskName: mt.DiskName, Path: mt.Path,
+			FreePercent: mt.FreePercent, Observations: obs,
+		})
+	}
+	return out
+}
+
+func viewDetachedMatches(rep diagnose.Report) []any {
+	m, ok := rep.(diagnose.DetachedPartsReport)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(m.Matches))
+	for _, mt := range m.Matches {
+		obs := make([]detachedObsView, 0, len(mt.Observations))
+		for _, o := range mt.Observations {
+			obs = append(obs, detachedObsView{
+				NodeID: o.NodeID, PartName: o.PartName, Reason: o.Reason,
+				Disk: o.Disk, BytesOnDisk: o.BytesOnDisk, Reasons: o.Reasons,
+			})
+		}
+		out = append(out, detachedMatchView{
+			ShardID: mt.ShardID, Database: mt.Database, Table: mt.Table,
+			Parts: mt.Parts, Reasons: mt.Reasons, Observations: obs,
+		})
+	}
+	return out
+}
+
+func fillCommon(v *checkView, h diagnose.ReportHeader, err error) {
+	v.CheckID = h.ID
+	v.RuleVersion = h.RuleVersion
+	v.StartedAt = h.StartedAt
+	v.FinishedAt = h.FinishedAt
+	v.Execution = string(h.Execution)
+	v.Outcome = string(h.Outcome)
+	v.Targets = viewTargets(h.Targets)
+	v.NextSteps = viewFollowUps(h.NextSteps)
 	if err != nil {
 		v.Err = err.Error()
 	}
