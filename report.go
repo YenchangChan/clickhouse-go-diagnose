@@ -89,7 +89,10 @@ const (
 	// AdviceInvestigateBrokenPart 核对服务端判定损坏的 part 的来源与恢复手段。
 	AdviceInvestigateBrokenPart = "investigate_broken_part"
 	// AdviceInspectDetachedParts 核对 detached 目录内容并规划 ATTACH/清理。
-	AdviceInspectDetachedParts = "inspect_detached_parts"
+	AdviceInspectDetachedParts     = "inspect_detached_parts"
+	AdviceInspectResourceConsumers = "inspect_resource_consumers"
+	AdviceExplainSlowQuery         = "inspect_slow_query_plan"
+	AdviceInspectDDLHosts          = "inspect_distributed_ddl_hosts"
 )
 
 // 副本状态判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
@@ -109,6 +112,13 @@ const (
 	ReasonReplicaDelayExceeded = "replica_delay_exceeded"
 	// ReasonLostParts 副本记录了永久性丢件（lost_part_count > 0）。
 	ReasonLostParts = "lost_parts"
+)
+
+const (
+	ReasonCPUUsageHigh        = "cpu_usage_high"
+	ReasonMemoryUsageHigh     = "memory_usage_high"
+	ReasonSlowQuerySelected   = "slow_query_selected"
+	ReasonDistributedDDLStuck = "distributed_ddl_stuck"
 )
 
 // mutation 判定理由的稳定代码。机器消费不应解析展示文案，只匹配这些代码。
@@ -507,6 +517,80 @@ type DetachedPartsReport struct {
 	Targets   []NodeResult    `json:"targets"`
 	Matches   []DetachedMatch `json:"matches"`
 	NextSteps []FollowUp      `json:"next_steps"`
+}
+
+type ResourcePressureMatch struct {
+	ShardID        string   `json:"shard_id"`
+	NodeID         string   `json:"node_id"`
+	CPUPercent     float64  `json:"cpu_percent"`
+	MemoryPercent  float64  `json:"memory_percent"`
+	MemoryResident uint64   `json:"memory_resident"`
+	MemoryTotal    uint64   `json:"memory_total"`
+	Reasons        []string `json:"reasons"`
+}
+
+type ResourcePressureReport struct {
+	CheckID     string                  `json:"check_id"`
+	RuleVersion string                  `json:"rule_version"`
+	StartedAt   time.Time               `json:"started_at"`
+	FinishedAt  time.Time               `json:"finished_at"`
+	Execution   Execution               `json:"execution"`
+	Outcome     Outcome                 `json:"outcome"`
+	Targets     []NodeResult            `json:"targets"`
+	Snapshots   []ResourcePressureMatch `json:"snapshots"`
+	Matches     []ResourcePressureMatch `json:"matches"`
+	NextSteps   []FollowUp              `json:"next_steps"`
+}
+
+type SlowQueryMatch struct {
+	ShardID     string   `json:"shard_id"`
+	NodeID      string   `json:"node_id"`
+	QueryID     string   `json:"query_id"`
+	DurationMS  uint64   `json:"duration_ms"`
+	ReadRows    uint64   `json:"read_rows"`
+	ReadBytes   uint64   `json:"read_bytes"`
+	ResultRows  uint64   `json:"result_rows"`
+	MemoryUsage uint64   `json:"memory_usage"`
+	CPUTimeUS   uint64   `json:"cpu_time_us"`
+	Query       string   `json:"query"`
+	Reasons     []string `json:"reasons"`
+}
+
+type SlowQueryReport struct {
+	CheckID     string           `json:"check_id"`
+	RuleVersion string           `json:"rule_version"`
+	StartedAt   time.Time        `json:"started_at"`
+	FinishedAt  time.Time        `json:"finished_at"`
+	Execution   Execution        `json:"execution"`
+	Outcome     Outcome          `json:"outcome"`
+	Targets     []NodeResult     `json:"targets"`
+	Matches     []SlowQueryMatch `json:"matches"`
+	NextSteps   []FollowUp       `json:"next_steps"`
+}
+
+type DistributedDDLMatch struct {
+	ShardID       string   `json:"shard_id"`
+	NodeID        string   `json:"node_id"`
+	Entry         string   `json:"entry"`
+	Host          string   `json:"host"`
+	Status        string   `json:"status"`
+	ExceptionCode int      `json:"exception_code"`
+	ExceptionText string   `json:"exception_text"`
+	AgeSeconds    int      `json:"age_seconds"`
+	Query         string   `json:"query"`
+	Reasons       []string `json:"reasons"`
+}
+
+type DistributedDDLReport struct {
+	CheckID     string                `json:"check_id"`
+	RuleVersion string                `json:"rule_version"`
+	StartedAt   time.Time             `json:"started_at"`
+	FinishedAt  time.Time             `json:"finished_at"`
+	Execution   Execution             `json:"execution"`
+	Outcome     Outcome               `json:"outcome"`
+	Targets     []NodeResult          `json:"targets"`
+	Matches     []DistributedDDLMatch `json:"matches"`
+	NextSteps   []FollowUp            `json:"next_steps"`
 }
 
 func inputError(format string, args ...any) error {

@@ -13,7 +13,7 @@ import (
 
 func TestParseChecks(t *testing.T) {
 	got, err := parseChecks("all")
-	if err != nil || len(got) != 7 {
+	if err != nil || len(got) != 10 {
 		t.Fatalf("all: %v, len=%d", err, len(got))
 	}
 	got, err = parseChecks("replica_status, disk_space_low ,replica_status")

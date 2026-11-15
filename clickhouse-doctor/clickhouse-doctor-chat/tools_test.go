@@ -91,8 +91,8 @@ func TestListChecksTool(t *testing.T) {
 	if err := json.Unmarshal([]byte(res.Content), &metas); err != nil {
 		t.Fatalf("输出应为 CheckMeta JSON: %v", err)
 	}
-	if len(metas) != 7 {
-		t.Fatalf("应列出 7 个检查, got %d", len(metas))
+	if len(metas) != 10 {
+		t.Fatalf("应列出 10 个检查, got %d", len(metas))
 	}
 	ids := map[string]bool{}
 	for _, m := range metas {

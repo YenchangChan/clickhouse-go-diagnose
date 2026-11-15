@@ -32,6 +32,8 @@ type CheckOptions struct {
 	Concurrency    int           `json:"concurrency"`
 	MaxRowsPerNode int           `json:"max_rows_per_node"`
 	Scope          Scope         `json:"scope,omitempty"`
+	QueryID        string        `json:"query_id,omitempty"`
+	DDLEntry       string        `json:"ddl_entry,omitempty"`
 
 	Thresholds []int `json:"thresholds"`
 }
@@ -152,6 +154,26 @@ var checkRegistry = []checkEntry{
 			}},
 		},
 		run: runDetachedParts,
+	},
+	{
+		meta: CheckMeta{
+			ID:          resourcePressureCheckID,
+			RuleVersion: resourcePressureRuleVersion,
+			Description: "节点 CPU 与内存占用快照",
+			Thresholds: []ThresholdSpec{
+				{Key: "cpu_percent", Default: defaultCPUPercentThreshold, Description: "CPU 使用率百分比"},
+				{Key: "memory_percent", Default: defaultMemoryPercentThreshold, Description: "进程 RSS 占系统内存百分比"},
+			},
+		},
+		run: runResourcePressure,
+	},
+	{
+		meta: CheckMeta{ID: slowQueryCheckID, RuleVersion: slowQueryRuleVersion, Description: "按 query_id 采集慢查询资源证据"},
+		run:  runSlowQuery,
+	},
+	{
+		meta: CheckMeta{ID: distributedDDLCheckID, RuleVersion: distributedDDLRuleVersion, Description: "按 entry 采集未完成的分布式 DDL 证据"},
+		run:  runDistributedDDL,
 	},
 }
 
@@ -336,6 +358,28 @@ func runDetachedParts(ctx context.Context, targets []Target, opts CheckOptions) 
 	return rep, err
 }
 
+func runResourcePressure(ctx context.Context, targets []Target, opts CheckOptions) (Report, error) {
+	o := ResourcePressureOptions{Timeout: opts.Timeout, NodeTimeout: opts.NodeTimeout, Concurrency: opts.Concurrency, MaxRowsPerNode: opts.MaxRowsPerNode}
+	if len(opts.Thresholds) > 0 {
+		o.CPUPercentThreshold = opts.Thresholds[0]
+	}
+	if len(opts.Thresholds) > 1 {
+		o.MemoryPercentThreshold = opts.Thresholds[1]
+	}
+	rep, err := CheckResourcePressure(ctx, targets, o)
+	return rep, err
+}
+
+func runSlowQuery(ctx context.Context, targets []Target, opts CheckOptions) (Report, error) {
+	rep, err := CheckSlowQuery(ctx, targets, SlowQueryOptions{Timeout: opts.Timeout, NodeTimeout: opts.NodeTimeout, Concurrency: opts.Concurrency, MaxRowsPerNode: opts.MaxRowsPerNode, QueryID: opts.QueryID})
+	return rep, err
+}
+
+func runDistributedDDL(ctx context.Context, targets []Target, opts CheckOptions) (Report, error) {
+	rep, err := CheckDistributedDDL(ctx, targets, DistributedDDLOptions{Timeout: opts.Timeout, NodeTimeout: opts.NodeTimeout, Concurrency: opts.Concurrency, MaxRowsPerNode: opts.MaxRowsPerNode, Entry: opts.DDLEntry})
+	return rep, err
+}
+
 // ---- 各报告的公共视图实现 ----
 
 func (r ReplicationQueueReport) Header() ReportHeader {
@@ -363,5 +407,17 @@ func (r DiskSpaceReport) Header() ReportHeader {
 }
 
 func (r DetachedPartsReport) Header() ReportHeader {
+	return headerFor(r.CheckID, r.RuleVersion, r.StartedAt, r.FinishedAt, r.Execution, r.Outcome, r.Targets, r.NextSteps)
+}
+
+func (r ResourcePressureReport) Header() ReportHeader {
+	return headerFor(r.CheckID, r.RuleVersion, r.StartedAt, r.FinishedAt, r.Execution, r.Outcome, r.Targets, r.NextSteps)
+}
+
+func (r SlowQueryReport) Header() ReportHeader {
+	return headerFor(r.CheckID, r.RuleVersion, r.StartedAt, r.FinishedAt, r.Execution, r.Outcome, r.Targets, r.NextSteps)
+}
+
+func (r DistributedDDLReport) Header() ReportHeader {
 	return headerFor(r.CheckID, r.RuleVersion, r.StartedAt, r.FinishedAt, r.Execution, r.Outcome, r.Targets, r.NextSteps)
 }

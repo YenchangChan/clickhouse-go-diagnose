@@ -15,6 +15,9 @@ var wantCheckIDs = []string{
 	"replication_queue_backlog",
 	"disk_space_low",
 	"detached_parts",
+	"resource_pressure",
+	"slow_query",
+	"distributed_ddl",
 }
 
 func TestListChecks(t *testing.T) {
@@ -63,6 +66,9 @@ func TestListChecks(t *testing.T) {
 		{"replication_queue_backlog", []string{"depth", "age_seconds", "retries"}, []int{defaultDepthThreshold, defaultAgeThresholdSeconds, defaultRetriesThreshold}},
 		{"disk_space_low", []string{"free_percent"}, []int{defaultDiskFreePercentThreshold}},
 		{"detached_parts", []string{"count"}, []int{defaultDetachedCountThreshold}},
+		{"resource_pressure", []string{"cpu_percent", "memory_percent"}, []int{defaultCPUPercentThreshold, defaultMemoryPercentThreshold}},
+		{"slow_query", nil, nil},
+		{"distributed_ddl", nil, nil},
 	}
 	for _, c := range cases {
 		m := byID[c.id]
@@ -83,9 +89,16 @@ func TestListChecks(t *testing.T) {
 func TestRunCheckRoutesByID(t *testing.T) {
 	// 空结果集对所有检查都是合法输入：complete + no_match + nil。
 	for _, id := range wantCheckIDs {
+		opts := CheckOptions{}
+		if id == slowQueryCheckID {
+			opts.QueryID = "q-1"
+		}
+		if id == distributedDDLCheckID {
+			opts.DDLEntry = "entry-1"
+		}
 		rep, err := RunCheck(context.Background(), id, []Target{
 			{NodeID: "n1", ShardID: "s1", Querier: &fakeQuerier{rows: &fakeRows{}}},
-		}, CheckOptions{})
+		}, opts)
 		if err != nil {
 			t.Fatalf("%s: err = %v, want nil", id, err)
 		}

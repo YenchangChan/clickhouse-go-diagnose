@@ -23,6 +23,9 @@ func TestReportJSONFieldsHaveExplicitSnakeCaseTags(t *testing.T) {
 		reflect.TypeOf(QueueBacklogReport{}),
 		reflect.TypeOf(DiskSpaceReport{}),
 		reflect.TypeOf(DetachedPartsReport{}),
+		reflect.TypeOf(ResourcePressureReport{}),
+		reflect.TypeOf(SlowQueryReport{}),
+		reflect.TypeOf(DistributedDDLReport{}),
 	}
 
 	packagePath := reflect.TypeOf(NodeResult{}).PkgPath()
