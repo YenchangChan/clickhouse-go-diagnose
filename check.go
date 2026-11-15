@@ -31,6 +31,7 @@ type CheckOptions struct {
 	NodeTimeout    time.Duration `json:"node_timeout"`
 	Concurrency    int           `json:"concurrency"`
 	MaxRowsPerNode int           `json:"max_rows_per_node"`
+	Scope          Scope         `json:"scope,omitempty"`
 
 	Thresholds []int `json:"thresholds"`
 }
@@ -235,6 +236,7 @@ func runReplicationQueueFailures(ctx context.Context, targets []Target, opts Che
 		NodeTimeout:    opts.NodeTimeout,
 		Concurrency:    opts.Concurrency,
 		MaxRowsPerNode: opts.MaxRowsPerNode,
+		Scope:          opts.Scope,
 	})
 	return rep, err
 }
@@ -245,6 +247,7 @@ func runTooManyParts(ctx context.Context, targets []Target, opts CheckOptions) (
 		NodeTimeout:    opts.NodeTimeout,
 		Concurrency:    opts.Concurrency,
 		MaxRowsPerNode: opts.MaxRowsPerNode,
+		Scope:          opts.Scope,
 	}
 	if len(opts.Thresholds) > 0 {
 		o.PartsThreshold = opts.Thresholds[0]
@@ -259,6 +262,7 @@ func runReplicaStatus(ctx context.Context, targets []Target, opts CheckOptions) 
 		NodeTimeout:    opts.NodeTimeout,
 		Concurrency:    opts.Concurrency,
 		MaxRowsPerNode: opts.MaxRowsPerNode,
+		Scope:          opts.Scope,
 	}
 	if len(opts.Thresholds) > 0 {
 		o.DelayThresholdSeconds = opts.Thresholds[0]
@@ -273,6 +277,7 @@ func runMutationsStuck(ctx context.Context, targets []Target, opts CheckOptions)
 		NodeTimeout:    opts.NodeTimeout,
 		Concurrency:    opts.Concurrency,
 		MaxRowsPerNode: opts.MaxRowsPerNode,
+		Scope:          opts.Scope,
 	}
 	if len(opts.Thresholds) > 0 {
 		o.AgeThresholdSeconds = opts.Thresholds[0]
@@ -287,6 +292,7 @@ func runQueueBacklog(ctx context.Context, targets []Target, opts CheckOptions) (
 		NodeTimeout:    opts.NodeTimeout,
 		Concurrency:    opts.Concurrency,
 		MaxRowsPerNode: opts.MaxRowsPerNode,
+		Scope:          opts.Scope,
 	}
 	if len(opts.Thresholds) > 0 {
 		o.DepthThreshold = opts.Thresholds[0]
@@ -321,6 +327,7 @@ func runDetachedParts(ctx context.Context, targets []Target, opts CheckOptions) 
 		NodeTimeout:    opts.NodeTimeout,
 		Concurrency:    opts.Concurrency,
 		MaxRowsPerNode: opts.MaxRowsPerNode,
+		Scope:          opts.Scope,
 	}
 	if len(opts.Thresholds) > 0 {
 		o.CountThreshold = opts.Thresholds[0]

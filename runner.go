@@ -53,6 +53,9 @@ func fillBudget(b *budget, defTimeout, defNodeTimeout time.Duration, defConcurre
 type collector[T any] struct {
 	// sql 是在每个目标节点上执行的固定查询。
 	sql string
+	// args contains bound values for a package-owned query, such as an
+	// optional database/table scope. User input is never interpolated.
+	args []any
 	// scan 处理当前行：返回 (观测, 是否保留)。返回错误表示 Scan 或
 	// 解析失败，采集即终止并分类为 scan_failed，已保留的证据仍然有效。
 	// 实现应在观测中标注 t.NodeID / t.ShardID；不得在内部读取 rows 的
@@ -176,7 +179,7 @@ func runNode[T any](total context.Context, t Target, nodeTimeout time.Duration, 
 	res.Status = NodeFailed
 	res.StartedAt = time.Now()
 
-	rows, err := t.Querier.Query(nodeCtx, c.sql)
+	rows, err := t.Querier.Query(nodeCtx, c.sql, c.args...)
 	if err != nil {
 		res.ErrCategory = classifyQueryError(nodeCtx, err)
 		res.ErrMessage = err.Error()

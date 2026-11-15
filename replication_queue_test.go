@@ -57,10 +57,14 @@ type fakeQuerier struct {
 	err     error
 	delay   time.Duration
 	queries int
+	query   string
+	args    []any
 }
 
-func (q *fakeQuerier) Query(ctx context.Context, _ string, _ ...any) (Rows, error) {
+func (q *fakeQuerier) Query(ctx context.Context, query string, args ...any) (Rows, error) {
 	q.queries++
+	q.query = query
+	q.args = append([]any(nil), args...)
 	if q.delay > 0 {
 		select {
 		case <-time.After(q.delay):

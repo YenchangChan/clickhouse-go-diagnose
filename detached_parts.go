@@ -23,6 +23,8 @@ type DetachedPartsOptions struct {
 	// CountThreshold 是单表 detached part 总数的判定阈值（>= 判定）。
 	// 默认 10；1 表示"存在任何 detached part 都命中"，只建议用于验证判定链路。
 	CountThreshold int
+	// Scope optionally limits collection to one database or one table.
+	Scope Scope
 }
 
 // CheckDetachedParts 检查指定节点上用户库表的 detached part，
@@ -64,6 +66,10 @@ func CheckDetachedParts(
 	if opts.CountThreshold == 0 {
 		opts.CountThreshold = defaultDetachedCountThreshold
 	}
+	query, args, err := scopedQuery(detachedPartsSQL, "ORDER BY", true, opts.Scope)
+	if err != nil {
+		return DetachedPartsReport{}, err
+	}
 
 	b := budget{
 		timeout:     opts.Timeout,
@@ -74,7 +80,8 @@ func CheckDetachedParts(
 	fillBudget(&b, defaultTimeout, defaultNodeTimeout, defaultConcurrency, defaultMaxRowsPerNode)
 
 	c := collector[detachedObservation]{
-		sql: detachedPartsSQL,
+		sql:  query,
+		args: args,
 		scan: func(t Target, rows Rows) (detachedObservation, bool, error) {
 			var db, table, name, reason, disk, bytes sql.NullString
 			if err := rows.Scan(&db, &table, &name, &reason, &disk, &bytes); err != nil {

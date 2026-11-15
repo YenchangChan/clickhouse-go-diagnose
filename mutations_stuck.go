@@ -31,6 +31,8 @@ type MutationsStuckOptions struct {
 	MaxRowsPerNode int
 	// AgeThresholdSeconds 是未完成 mutation 的年龄判定阈值（秒）。默认 86400（一天）。
 	AgeThresholdSeconds int
+	// Scope optionally limits collection to one database or one table.
+	Scope Scope
 }
 
 // CheckMutationsStuck 检查指定节点上卡住的 mutation（system.mutations 中
@@ -66,6 +68,10 @@ func CheckMutationsStuck(
 	if opts.AgeThresholdSeconds == 0 {
 		opts.AgeThresholdSeconds = defaultAgeThreshold
 	}
+	query, args, err := scopedQuery(mutationsStuckSQL, "ORDER BY", true, opts.Scope)
+	if err != nil {
+		return MutationsStuckReport{}, err
+	}
 
 	b := budget{
 		timeout:     opts.Timeout,
@@ -76,7 +82,8 @@ func CheckMutationsStuck(
 	fillBudget(&b, defaultTimeout, defaultNodeTimeout, defaultConcurrency, defaultMaxRowsPerNode)
 
 	c := collector[mutationObservation]{
-		sql: mutationsStuckSQL,
+		sql:  query,
+		args: args,
 		scan: func(t Target, rows Rows) (mutationObservation, bool, error) {
 			var (
 				db, table, id, cmd    sql.NullString

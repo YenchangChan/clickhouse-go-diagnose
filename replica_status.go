@@ -30,6 +30,8 @@ type ReplicaStatusOptions struct {
 	MaxRowsPerNode int
 	// DelayThresholdSeconds 是副本 absolute_delay 的判定阈值（秒）。默认 300。
 	DelayThresholdSeconds int
+	// Scope optionally limits collection to one database or one table.
+	Scope Scope
 }
 
 // CheckReplicaStatus 检查指定节点上复制表的副本状态，判定规则：
@@ -73,6 +75,10 @@ func CheckReplicaStatus(
 	if opts.DelayThresholdSeconds == 0 {
 		opts.DelayThresholdSeconds = defaultDelayThreshold
 	}
+	query, args, err := scopedQuery(replicaStatusSQL, "ORDER BY", false, opts.Scope)
+	if err != nil {
+		return ReplicaStatusReport{}, err
+	}
 
 	b := budget{
 		timeout:     opts.Timeout,
@@ -83,7 +89,8 @@ func CheckReplicaStatus(
 	fillBudget(&b, defaultTimeout, defaultNodeTimeout, defaultConcurrency, defaultMaxRowsPerNode)
 
 	c := collector[replicaObservation]{
-		sql: replicaStatusSQL,
+		sql:  query,
+		args: args,
 		scan: func(t Target, rows Rows) (replicaObservation, bool, error) {
 			var (
 				db, table                  sql.NullString

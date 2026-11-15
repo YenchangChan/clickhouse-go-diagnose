@@ -18,6 +18,8 @@ type ReplicationQueueOptions struct {
 	// MaxRowsPerNode 是单节点保留的匹配行上限；读取到第 N+1 条即停止并标记截断。
 	// 默认 1000。
 	MaxRowsPerNode int
+	// Scope optionally limits collection to one database or one table.
+	Scope Scope
 }
 
 // CheckReplicationQueueFailures 检查指定节点复制队列中记录的
@@ -43,6 +45,10 @@ func CheckReplicationQueueFailures(
 	if opts.Timeout < 0 || opts.NodeTimeout < 0 || opts.Concurrency < 0 || opts.MaxRowsPerNode < 0 {
 		return ReplicationQueueReport{}, inputError("预算项不允许为负值")
 	}
+	query, args, err := scopedQuery(replicationQueueSQL, "ORDER BY", true, opts.Scope)
+	if err != nil {
+		return ReplicationQueueReport{}, err
+	}
 
 	b := budget{
 		timeout:     opts.Timeout,
@@ -53,7 +59,8 @@ func CheckReplicationQueueFailures(
 	fillBudget(&b, defaultTimeout, defaultNodeTimeout, defaultConcurrency, defaultMaxRowsPerNode)
 
 	c := collector[nodeObservation]{
-		sql: replicationQueueSQL,
+		sql:  query,
+		args: args,
 		scan: func(t Target, rows Rows) (nodeObservation, bool, error) {
 			var db, table, part, lastExcp sql.NullString
 			if err := rows.Scan(&db, &table, &part, &lastExcp); err != nil {

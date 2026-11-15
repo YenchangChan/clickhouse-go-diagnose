@@ -29,6 +29,8 @@ type TooManyPartsOptions struct {
 	MaxRowsPerNode int
 	// PartsThreshold 是单分区活跃 part 数的判定阈值。默认 1000。
 	PartsThreshold int
+	// Scope optionally limits collection to one database or one table.
+	Scope Scope
 }
 
 // CheckTooManyParts 检查指定节点上活跃 part 数超过阈值的表分区，
@@ -57,6 +59,10 @@ func CheckTooManyParts(
 	if opts.PartsThreshold == 0 {
 		opts.PartsThreshold = defaultPartsThreshold
 	}
+	query, args, err := scopedQuery(tooManyPartsSQL, "GROUP BY", true, opts.Scope)
+	if err != nil {
+		return TooManyPartsReport{}, err
+	}
 
 	b := budget{
 		timeout:     opts.Timeout,
@@ -67,7 +73,8 @@ func CheckTooManyParts(
 	fillBudget(&b, defaultTimeout, defaultNodeTimeout, defaultConcurrency, defaultMaxRowsPerNode)
 
 	c := collector[partsObservation]{
-		sql: tooManyPartsSQL,
+		sql:  query,
+		args: args,
 		scan: func(t Target, rows Rows) (partsObservation, bool, error) {
 			var db, table, partition, parts, bytes sql.NullString
 			if err := rows.Scan(&db, &table, &partition, &parts, &bytes); err != nil {

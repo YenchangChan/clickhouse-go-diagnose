@@ -40,6 +40,8 @@ type QueueBacklogOptions struct {
 	// RetriesThreshold 是队列条目最大重试次数的判定阈值，判定条件为 >=。
 	// 默认 10。
 	RetriesThreshold int
+	// Scope optionally limits collection to one database or one table.
+	Scope Scope
 }
 
 // CheckReplicationQueueBacklog 检查指定节点复制队列的积压特征（在队条目
@@ -83,6 +85,10 @@ func CheckReplicationQueueBacklog(
 	if opts.RetriesThreshold == 0 {
 		opts.RetriesThreshold = defaultRetriesThreshold
 	}
+	query, args, err := scopedQuery(queueBacklogSQL, "GROUP BY", false, opts.Scope)
+	if err != nil {
+		return QueueBacklogReport{}, err
+	}
 
 	b := budget{
 		timeout:     opts.Timeout,
@@ -93,7 +99,8 @@ func CheckReplicationQueueBacklog(
 	fillBudget(&b, defaultTimeout, defaultNodeTimeout, defaultConcurrency, defaultMaxRowsPerNode)
 
 	c := collector[backlogObservation]{
-		sql: queueBacklogSQL,
+		sql:  query,
+		args: args,
 		scan: func(t Target, rows Rows) (backlogObservation, bool, error) {
 			var db, table, depth, oldestAge, maxTries, failing sql.NullString
 			if err := rows.Scan(&db, &table, &depth, &oldestAge, &maxTries, &failing); err != nil {
